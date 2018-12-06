@@ -27,9 +27,11 @@ void info (unsigned int winsize, unsigned int stepsize) {
 	<< "default step size: " << stepsize << "\n\n"
 	<< "Output:\n"
 	<< "(1) chromosome\n"
-	<< "(2) window midpoint position\n"
-	<< "(3) Fst\n"
-	<< "(4) Number sites in window\n\n";
+	<< "(2) window start\n"
+	<< "(3) window end\n"
+	<< "(4) window midpoint position\n"
+	<< "(5) Fst\n"
+	<< "(6) Number sites in window\n\n";
 }
 
 int parseArgs (int argc, char** argv, std::fstream &fstfile, unsigned int &windowsz, unsigned int &stepsz) {
@@ -66,7 +68,9 @@ int parseArgs (int argc, char** argv, std::fstream &fstfile, unsigned int &windo
 
 std::vector<siteComponents>::iterator calcWindow (std::vector<siteComponents>* sitevar, std::string* chr, const unsigned int &winsize, const unsigned int &step, unsigned int *nsites) {
 	// find midpoint of window
-	unsigned int mid = ((*sitevar)[0].pos + (*sitevar)[*nsites-1].pos)/2;
+	unsigned int startpos = (*sitevar)[0].pos;
+	unsigned int endpos = (*sitevar)[*nsites-1].pos;
+	unsigned int mid = (startpos + endpos)/2;
 
 	// calculate fst
 	double asum = 0;
@@ -81,7 +85,7 @@ std::vector<siteComponents>::iterator calcWindow (std::vector<siteComponents>* s
 	double fst = bsum != 0.0 ? asum/bsum : 0.0;
 
 	// print window info
-	std::cout << *chr << "\t" << mid << "\t" << fst << "\t" << *nsites << "\n";
+	std::cout << *chr << "\t" << startpos << "\t" << endpos << "\t" << mid << "\t" << fst << "\t" << *nsites << "\n";
 
 	// prepare window for new values
 	static unsigned int nnew;
