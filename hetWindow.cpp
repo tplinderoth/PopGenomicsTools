@@ -84,7 +84,7 @@ std::vector<genotype>::iterator calcWindow (std::vector<genotype>* sitegeno, std
 	double h = nonmissing != 0 ? (double)nhet/nonmissing : 0.0;
 
 	// print window info
-	std::cout << *chr << "\t" << startpos << "\t" << lastpos << "\t"  << mid << "\t" << h << "\t" << *nsites << "\n";
+	std::cout << *chr << "\t" << startpos << "\t" << lastpos << "\t"  << mid << "\t" << h << "\t" << nonmissing << "\n";
 
 	// prepare window for new values
 	static unsigned int nnew;
