@@ -1,5 +1,10 @@
+.autotools
+.cproject
+.project
+.settings/
 fstWindow
 hetWindow
 ihsWindow
+dxyWindow
 *.o
 *.d
