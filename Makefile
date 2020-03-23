@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -O3 -Wall
-BIN = fstWindow hetWindow ihsWindow dxyWindow
+BIN = fstWindow hetWindow ihsWindow dxyWindow ancAllele
 
 all: $(BIN)
 
@@ -12,6 +12,8 @@ ihsWindow: ihsWindow.cpp
 	$(CXX) $(CXXFLAGS) ihsWindow.cpp -o ihsWindow
 dxyWindow: dxyWindow.cpp
 	$(CXX) $(CXXFLAGS) dxyWindow.cpp -o dxyWindow -lz -lboost_iostreams
+ancAllele: ancAllele.cpp
+	$(CXX) $(CXXFLAGS) ancAllele.cpp -o ancAllele
 
 clean:
 	rm -f $(BIN) *.o *.d

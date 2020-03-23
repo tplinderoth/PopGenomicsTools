@@ -6,5 +6,6 @@ fstWindow
 hetWindow
 ihsWindow
 dxyWindow
+ancAllele
 *.o
 *.d
