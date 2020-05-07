@@ -1,10 +1,10 @@
 /*
-* ancAllele.cpp
+* pafAlleles.cpp
 *
-* Use parsimony to determine ancestral allele from genome alignments
 * Uses reference fasta and genome variants in paftools call format
+* to perform genomic liftover
 *
-* Compile: g++ -O3 -o ancAllele ancAllele.cpp
+* Compile: g++ -O3 -o pafAlleles pafAlleles.cpp
 *
 */
 
@@ -26,8 +26,8 @@ struct alignidx {
 
 void info (const std::string &refname) {
 	int w=12;
-	std::cerr << "\nInfer ancestral alleles for reference regions covered by one contig per aligned query assembly\n\n"
-	<< "ancAllele [options]\n\n"
+	std::cerr << "\nAssembly liftover for reference regions covered by one contig per aligned query assembly\n\n"
+	<< "pafAlleles [options]\n\n"
 	<< std::setw(w) << std::left << "-fasta" << "Indexed fasta file (required)\n"
 	<< std::setw(w) << std::left << "-varlist" << "File with columns (1) assembly/species name, (2) paftools variant file (required)\n"
 	<< std::setw(w) << std::left << "-chrlist" << "File with each row specifying a chromosome/scaffold to include\n"
@@ -232,7 +232,7 @@ void allocateSeq (std::vector<std::string*> &seq, unsigned int seqlen, int nasse
 	}
 }
 
-std::string getAA(const std::string* alleles, int arrsize) {
+std::string getMajor(const std::string* alleles, int arrsize) {
 	// identifies ancestral allele as the most frequent among assemblies
 
 	std::map<std::string,int> counts;
@@ -302,7 +302,7 @@ int doAnc (const std::string &fasta, const std::string &varlist, const std::stri
 	for (std::vector<alignidx>::iterator assemblyiter = varidx.begin(); assemblyiter != varidx.end(); ++assemblyiter) {
 		outheader +=  "\t" + assemblyiter->id;
 	}
-	outheader += "\tAA";
+	//outheader += "\tMajor";
 	std::cout << outheader << "\n";
 
 	// parse reference fasta and aligned assemblies and find ancestral alleles
@@ -413,7 +413,7 @@ int doAnc (const std::string &fasta, const std::string &varlist, const std::stri
 
 		std::cerr << "\n";
 
-		// find parsimonious ancestral allele
+		// print alleles among alignments
 		for (unsigned int site = 0; site < faidx_map[*chriter][0]; ++site) {
 			std::cout << *chriter << "\t" << site+1;
 
@@ -422,8 +422,8 @@ int doAnc (const std::string &fasta, const std::string &varlist, const std::stri
 				std::cout << "\t" << seq[site][assem];
 			}
 
-			std::string aa = getAA(seq[site], nassembly);
-			std::cout << "\t" << aa;
+			//std::string aa = getMajor(seq[site], nassembly);
+			//std::cout << "\t" << aa;
 
 			std::cout << "\n";
 
