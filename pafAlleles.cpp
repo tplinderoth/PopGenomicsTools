@@ -305,8 +305,8 @@ int doAnc (const std::string &fasta, const std::string &varlist, const std::stri
 	//outheader += "\tMajor";
 	std::cout << outheader << "\n";
 
-	// parse reference fasta and aligned assemblies and find ancestral alleles
-	std::cerr << "Parsing alignments and finding parsimonious alleles\n";
+	// parse reference fasta and aligned assemblies
+	std::cerr << "Parsing alignments and performing liftover\n";
 
 	int nassembly = varidx.size() + 1;
 	unsigned int maxlen = maxseq(faidx_map);
