@@ -89,14 +89,18 @@ for (my $i=0; $i <= $#order; $i++) {
 	my $x = $order[$i];
 	for (my $j=0; $j <= $#order; $j++) {
 		my $y = $order[$j];
-		next if ($x eq $y);
-		#print "$x: @{$group{$x}}\n$y: @{$group{$y}}\n"; exit;
-		foreach my $xidx (@{$group{$x}}) {
-			foreach my $yidx (@{$group{$y}}) {
-				$avgdist[$i]->[$j] += $dist[$xidx]->[$yidx];
+		if ($x eq $y) {
+			next;
+		} elsif ($avgdist[$j]->[$i] != 0) {
+			$avgdist[$i]->[$j] = $avgdist[$j]->[$i];
+		} else {
+			foreach my $xidx (@{$group{$x}}) {
+				foreach my $yidx (@{$group{$y}}) {
+					$avgdist[$i]->[$j] += $dist[$xidx]->[$yidx];
+				}
 			}
+			$avgdist[$i]->[$j] = sprintf "%.10f", $avgdist[$i]->[$j]/(scalar @{$group{$x}} * scalar @{$group{$y}});
 		}
-		$avgdist[$i]->[$j] /= (scalar @{$group{$x}} * scalar @{$group{$y}});
 	}
 }
 
