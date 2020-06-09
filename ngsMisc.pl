@@ -79,9 +79,8 @@ close $mfh;
 
 # average distances
 my @avgdist;
-my $ngroups = scalar(keys %group);
-for (my $i=0; $i < $ngroups; $i++) {
-	for (my $j=0; $j < $ngroups; $j++) {
+for (my $i=0; $i <= $#order; $i++) {
+	for (my $j=0; $j <= $#order; $j++) {
 		$avgdist[$i]->[$j] = 0;
 	}
 }
@@ -97,7 +96,7 @@ for (my $i=0; $i <= $#order; $i++) {
 				$avgdist[$i]->[$j] += $dist[$xidx]->[$yidx];
 			}
 		}
-		$avgdist[$i]->[$j] = sprintf "%.10g", $avgdist[$i]->[$j]/(scalar @{$group{$x}} * scalar @{$group{$y}});
+		$avgdist[$i]->[$j] /= (scalar @{$group{$x}} * scalar @{$group{$y}});
 	}
 }
 
