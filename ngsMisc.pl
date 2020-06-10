@@ -72,7 +72,7 @@ while (<$mfh>) {
 	@{$dist[$idx]} = split(/\s+/, $_);
 	next if (scalar(@{$dist[$idx]}) < 2);
 	my $label = shift @{$dist[$idx]};
-	push @{$group{$id{$label}}}, $idx;
+	push @{$group{$id{$label}}}, $idx if (exists $id{$label});
 	$idx++;
 }
 close $mfh;
