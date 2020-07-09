@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -O3 -Wall
-BIN = fstWindow hetWindow ihsWindow dxyWindow pafAlleles
+BIN = fstWindow hetWindow ihsWindow dxyWindow pafAlleles selkit
 
 all: $(BIN)
 
@@ -14,6 +14,8 @@ dxyWindow: dxyWindow.cpp
 	$(CXX) $(CXXFLAGS) dxyWindow.cpp -o dxyWindow -lz -lboost_iostreams
 pafAlleles: pafAlleles.cpp
 	$(CXX) $(CXXFLAGS) pafAlleles.cpp -o pafAlleles
+selkit: selkit.cpp
+	$(CXX) $(CXXFLAGS) selkit.cpp StatDist.cpp -o selkit
 
 clean:
 	rm -f $(BIN) *.o *.d
