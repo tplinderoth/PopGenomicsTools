@@ -209,6 +209,7 @@ unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> 
 	FILE *fp = NULL;
 	fp = popen(cmd.c_str(),"r");
 	double site_counts [2][2];
+	int nsites = 0; // counts number of sites processes for region
 
 	while(fgets(buf, buffsize, fp) != NULL) {
 		vcfstr += buf;
@@ -257,9 +258,12 @@ unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> 
 				counts[2]++;
 			}
 
+			++nsites;
 			vcfstr.clear();
 		}
 	}
+
+	if (nsites == 0) std::cerr << "WARNING: '" << cmd << "' returned zero sites\n";
 
 	return counts;
 }
@@ -277,8 +281,10 @@ int expectedParams(const std::string &vcf, const std::string &exfile, const std:
 	}
 
 	unsigned long total_counts = 0;
-	for (int i = 0; i<3; i++) {
-		total_counts += counts[i];
+	for (int i = 0; i<3; i++) total_counts += counts[i];
+	if (total_counts == 0) {
+		std::cerr << "ERROR: Cannot estimate variability parameters, zero informative sites\n";
+		return -1;
 	}
 
 	*ps0 = static_cast<double>(counts[0])/total_counts;
@@ -515,7 +521,7 @@ int main (int argc, char** argv) {
 	} else if (strcmp(argv[1],"hka") == 0) {
 		rv = hka(argc, argv);
 	} else {
-		std::cerr << "ERROR, Unknown command: " << argv[1] << "\n";
+		std::cerr << "ERROR: Unknown command '" << argv[1] << "'\n";
 		rv = -1;
 	}
 
