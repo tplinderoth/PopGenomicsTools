@@ -29,7 +29,9 @@ void hkaInfo () {
 	<< std::setw(w1) << std::left << "-vcf" << "VCF file to analyze (must be bgzipped and indexed)\n"
 	<< std::setw(w1) << std::left << "-popfile" << "TSV file with columns (1) sample name in VCF, (2) 0/1 population identifier\n"
 	<< std::setw(w1) << std::left << "-rf" << "TSV file with regions in format CHR POS END to calculate HKA statistic for\n"
+	<< std::setw(w1) << std::left << "-r" << "Region supplied as a string in format 'chr:from-to' to calculate HKA statistic for\n"
 	<< std::setw(w1) << std::left << "-out" << "Name of output file\n"
+	<< std::setw(w1) << std::left << "-include" << "TSV file with regions in format CHR POS END to use for expectation parameter estimation [default: all sites]\n"
 	<< std::setw(w1) << std::left << "-exclude" << "TSV file with regions in format CHR POS END to exclude for expectation calculation\n"
 	<< std::setw(w1) << std::left << "-ps0" << "Probability of a neutral site being polymorphic within population 0 only\n"
 	<< std::setw(w1) << std::left << "-ps1" << "Probability of a neutral site being polymorphic within population 1 only\n"
@@ -40,7 +42,25 @@ void hkaInfo () {
 	<< "\n";
 }
 
-int hkaArgs (int argc, char** argv, std::string &vcf, std::string &popfile, std::string &rf, std::string &out, std::string &exfile, int &passonly, double &ps0, double &ps1, double &pd01, int &preprob) {
+std::string formatRegion(std::string s) {
+	std::string sfmt("");
+	size_t l = s.length();
+	size_t c = s.find(':');
+	size_t d = s.find_last_of('-');
+	if (c == std::string::npos || d == std::string::npos) {
+		std::cerr << "ERROR: Invalid region format " << s << "\n";
+		return "";
+	}
+
+	sfmt += s.substr(0,c) + "\t";
+	sfmt += s.substr(c+1,(d-c-1)) + "\t";
+	sfmt += s.substr(d+1,(l-d-1));
+
+	return sfmt;
+}
+
+int hkaArgs (int argc, char** argv, std::string &vcf, std::string &popfile, std::string &rf, std::string &rstr, std::string &out, std::string &exfile, std::string &incfile,
+	int &passonly, double &ps0, double &ps1, double &pd01, int &preprob) {
 	if (argc < 3 || strcmp(argv[2],"-help") == 0) {
 		hkaInfo();
 		return 1;
@@ -66,8 +86,17 @@ int hkaArgs (int argc, char** argv, std::string &vcf, std::string &popfile, std:
 				std::cerr << "Unable to locate file of regions to calculate statistics for: " << rf << "\n";
 				return -1;
 			}
+		} else if (strcmp(argv[c],"-r") == 0) {
+			rstr = formatRegion(argv[c+1]);
+			if (rstr.empty()) return -1;
 		} else if (strcmp(argv[c],"-out") == 0) {
 			out = argv[c+1];
+		} else if (strcmp(argv[c],"-include") == 0) {
+			incfile = argv[c+1];
+			if (!fexists(incfile.c_str())) {
+				std::cerr << "Unable to locate file of regions to include for estimating parameters: " << incfile << "\n";
+				return -1;
+			}
 		} else if (strcmp(argv[c],"-exclude") == 0) {
 			exfile = argv[c+1];
 			if (!fexists(exfile.c_str())) {
@@ -268,9 +297,10 @@ unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> 
 	return counts;
 }
 
-int expectedParams(const std::string &vcf, const std::string &exfile, const std::vector<int> &popmap, int passonly, double* ps0, double* ps1, double* pd01) {
+int expectedParams(const std::string &vcf, const std::string &incfile, const std::string &exfile, const std::vector<int> &popmap, int passonly, double* ps0, double* ps1, double* pd01) {
 	// make bcftools call
 	std::string cmd("bcftools view -H");
+	if (!incfile.empty()) cmd += (" -R " + incfile);
 	if (!exfile.empty()) cmd += (" -T ^" + exfile);
 	if (passonly) cmd += " -f PASS";
 	cmd += (" " + vcf);
@@ -398,6 +428,8 @@ int hka (int argc, char** argv) {
 	std::string vcf; // name of VCF to analyze
 	std::string popfile; // pop sample
 	std::string regionfile; // file listing regions to calculate HKA statistic for
+	std::string region; // single string 'chr:to-from' region to calculate HKA statistic for
+	std::string incfile; // file of regions to use for parameter estimation (versus using all sites)
 	std::string exfile; // file of regions to exclude when calculating probabilities for expectations
 	std::string outfile; // output file
 	int passonly = 0; // if 1 analyze only sites with PASS in FILTER vcf field
@@ -407,7 +439,7 @@ int hka (int argc, char** argv) {
 	int preprob = 0; // if 1, probabilities for expectation calculation have been supplied
 
 	// parse arguments
-	if ((rv = hkaArgs(argc, argv, vcf, popfile, regionfile, outfile, exfile, passonly, ps0, ps1, pd01, preprob)) < 0) {
+	if ((rv = hkaArgs(argc, argv, vcf, popfile, regionfile, region, outfile, exfile, incfile, passonly, ps0, ps1, pd01, preprob)) < 0) {
 		return -1;
 	} else if (rv) {
 		return 0;
@@ -433,10 +465,12 @@ int hka (int argc, char** argv) {
 
 	// open input stream of regions to test
 	std::ifstream rf_stream;
-	rf_stream.open(regionfile.c_str());
-	if (!rf_stream) {
-		std::cerr << "ERROR: Unable to open file of regions to test " << regionfile << "\n";
-		return -1;
+	if (!regionfile.empty()) {
+		rf_stream.open(regionfile.c_str());
+		if (!rf_stream) {
+			std::cerr << "ERROR: Unable to open file of regions to test " << regionfile << "\n";
+			return -1;
+		}
 	}
 
 
@@ -460,7 +494,7 @@ int hka (int argc, char** argv) {
 	// Estimate parameters for obtaining expectations from the genome
 	if (!preprob) {
 		std::cerr << "Estimating parameters\n";
-		if((rv = expectedParams(vcf, exfile, popmap, passonly, &ps0, &ps1, &pd01))) {
+		if((rv = expectedParams(vcf, incfile, exfile, popmap, passonly, &ps0, &ps1, &pd01))) {
 			return rv;
 		}
 		std::cerr << "\nPARAMETER ESTIMATES\n" << "ps0: " << ps0 << "\nps1: " << ps1 << "\npd01: " << pd01 << "\n\n";
@@ -473,14 +507,13 @@ int hka (int argc, char** argv) {
 
 	// Calculate observed values and calculate statistic
 	std::cerr << "Counting observed polymorphisms and calculating HKA statistic\n";
-	std::string region;
 	const int nstats = 7;
 	double stats[nstats];
 	int df = 2; // degrees of freedom for GOF test
 	double p,pval;
 	out_stream << "chr\tstart\tend\tX2\tpval\tobsS0\texpS0\tobsS1\texpS1\tobsD01\texpD01\n";
 
-	while (getline(rf_stream, region)) {
+	while (!region.empty() || getline(rf_stream, region)) {
 		std::cerr << region << "\n";
 		testRegion (vcf, region, popmap, passonly, ps0, ps1, pd01, stats);
 		if (stats != NULL) {
@@ -499,6 +532,7 @@ int hka (int argc, char** argv) {
 			std::cerr << "Failed to calculate HKA statistic\n";
 			return -1;
 		}
+		region.clear();
 	}
 
 	return rv;

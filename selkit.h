@@ -23,11 +23,12 @@ bool fexists(const char* filename);
 int hka (int argc, char** argv);
 double* testRegion (const std::string &vcf, const std::string &region, const std::vector<int> &popmap, int passonly, double ps0, double ps1, double pd01, double* stats);
 double hkaGOF (double s0, double s1, double d01, double es0, double es1, double ed01);
-int expectedParams(const std::string &vcf, const std::string &exfile, const std::vector<int> &popmap, int passonly, double* ps0, double* ps1, double* pd01);
+int expectedParams(const std::string &vcf, const std::string &incfile, const std::string &exfile, const std::vector<int> &popmap, int passonly, double* ps0, double* ps1, double* pd01);
 unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> &popmap, int passonly, unsigned long *counts);
 int countAlt(const std::string &geno);
 int pop2idx_sub(const std::vector<int> &full, std::vector<int>* subset, int id);
 int indexPops (const std::string &vcf, const std::string &popfile, std::vector<int>* popmap);
+std::string formatRegion(std::string s);
 int hkaArgs (int argc, char** argv, std::string &vcf, std::string &popfile, std::string &rf, std::string &out, std::string &exfile, int &passonly, double &ps0, double &ps1, double &pd01, int &preprob);
 void hkaInfo ();
 
