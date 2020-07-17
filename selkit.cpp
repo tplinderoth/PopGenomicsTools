@@ -27,18 +27,17 @@ void hkaInfo () {
 	std::cerr << "\nselkit hka [arguments]\n"
 	<< "\nArguments:\n"
 	<< std::setw(w1) << std::left << "-vcf" << "VCF file to analyze (must be bgzipped and indexed)\n"
-	<< std::setw(w1) << std::left << "-popfile" << "TSV file with columns (1) sample name in VCF, (2) 0/1 population identifier\n"
+	<< std::setw(w1) << std::left << "-popfile" << "TSV file with rows having VCF sample name followed by a 0 (outgroup) or 1 (ingroup) population identifier\n"
 	<< std::setw(w1) << std::left << "-rf" << "TSV file with regions in format CHR POS END to calculate HKA statistic for\n"
 	<< std::setw(w1) << std::left << "-r" << "Region supplied as a string in format 'chr:from-to' to calculate HKA statistic for\n"
 	<< std::setw(w1) << std::left << "-out" << "Name of output file\n"
 	<< std::setw(w1) << std::left << "-include" << "TSV file with regions in format CHR POS END to use for expectation parameter estimation [default: all sites]\n"
 	<< std::setw(w1) << std::left << "-exclude" << "TSV file with regions in format CHR POS END to exclude for expectation calculation\n"
-	<< std::setw(w1) << std::left << "-ps0" << "Probability of a neutral site being polymorphic within population 0 only\n"
-	<< std::setw(w1) << std::left << "-ps1" << "Probability of a neutral site being polymorphic within population 1 only\n"
-	<< std::setw(w1) << std::left << "-pd01" << "Probability of a fixed difference between populations 0 and 1\n"
+	<< std::setw(w1) << std::left << "-ps" << "Probability of a neutral site being polymorphic within the ingroup\n"
+	<< std::setw(w1) << std::left << "-pd" << "Probability that a neutral site is fixed between the ingroup and outgroup\n"
 	<< std::setw(w1) << std::left << "-passonly" << "Use only sites with PASS in VCF FILTER field\n"
-	<< "\nCalculates HKA statistic by comparing all individuals in population 0 to all individuals in population 1.\n"
-	<< "If supplying precalculated probabilities -ps0, -ps1, and -d01 must sum to 1.\n"
+	<< "\nHKA statistic calculated by comparing all ingroup individuals to all outgroup individuals.\n"
+	<< "If supplying precalculated probabilities -ps and -pd must sum to 1.\n"
 	<< "\n";
 }
 
@@ -60,7 +59,7 @@ std::string formatRegion(std::string s) {
 }
 
 int hkaArgs (int argc, char** argv, std::string &vcf, std::string &popfile, std::string &rf, std::string &rstr, std::string &out, std::string &exfile, std::string &incfile,
-	int &passonly, double &ps0, double &ps1, double &pd01, int &preprob) {
+	int &passonly, double &ps, double &pd, int &preprob) {
 	if (argc < 3 || strcmp(argv[2],"-help") == 0) {
 		hkaInfo();
 		return 1;
@@ -102,14 +101,11 @@ int hkaArgs (int argc, char** argv, std::string &vcf, std::string &popfile, std:
 			if (!fexists(exfile.c_str())) {
 				std::cerr << "Unable to locate file of regions to exclude: " << exfile << "\n";
 			}
-		} else if (strcmp(argv[c],"-ps0") == 0) {
-			ps0 = atof(argv[c+1]);
+		} else if (strcmp(argv[c],"-ps") == 0) {
+			ps = atof(argv[c+1]);
 			preprob = 1;
-		} else if (strcmp(argv[c],"-ps1") == 0) {
-			ps1 = atof(argv[c+1]);
-			preprob = 1;
-		} else if (strcmp(argv[c],"-pd01") == 0) {
-			pd01 = atof(argv[c+1]);
+		} else if (strcmp(argv[c],"-pd") == 0) {
+			pd = atof(argv[c+1]);
 			preprob = 1;
 		} else if (strcmp(argv[c],"-passonly") == 0) {
 			passonly = 1;
@@ -226,8 +222,8 @@ int countAlt(const std::string &geno) {
 }
 
 unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> &popmap, int passonly, unsigned long *counts) {
-	// count the number of SNPs that are segregating only within group 0,
-	// segregating only within group 1, and fixed between groups 0 and 1
+	// count number of segregating sites within each population
+	// and the number of fixed differences
 
 	for (int i=0; i<3; ++i) counts[i] = 0;
 
@@ -238,7 +234,7 @@ unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> 
 	FILE *fp = NULL;
 	fp = popen(cmd.c_str(),"r");
 	double site_counts [2][2];
-	int nsites = 0; // counts number of sites processes for region
+	int nsites = 0; // counts number of sites processed for region
 
 	while(fgets(buf, buffsize, fp) != NULL) {
 		vcfstr += buf;
@@ -271,23 +267,15 @@ unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> 
 				return NULL;
 			}
 
-			// count patterns
-			// skip sites that are variable in both pops or fixed for the same allele
-			double p0altf = site_counts[0][0]/site_counts[0][1];
-			double p1altf = site_counts[1][0]/site_counts[1][1];
-
-			if ((p0altf > 0 && p1altf < 1) && (p1altf == 0 || p1altf == 1)) {
-				// site variable only within pop 0
-				counts[0]++;
-			} else if ((p0altf == 0 || p0altf == 1) && (p1altf > 0 && p1altf < 1)) {
-				// site variable only within pop 1
-				counts[1]++;
-			} else if ((p0altf == 0 || p0altf == 1) && (p1altf == 0 || p1altf == 1) && (p0altf != p1altf)) {
-				// fixed difference
-				counts[2]++;
+			// count patterns if site has data for both populations
+			if (site_counts[0][1] > 0 && site_counts[1][1] > 0) {
+				double p0altf = site_counts[0][0]/site_counts[0][1];
+				double p1altf = site_counts[1][0]/site_counts[1][1];
+				if (p0altf > 0 && p0altf < 1) ++counts[0]; // pop0 variable site
+				if (p1altf > 0 && p1altf < 1) ++counts[1]; // pop1 variable site
+				if ((p0altf == 0 || p0altf == 1) && (p1altf == 0 || p1altf == 1) && (p0altf != p1altf)) ++counts[2]; // fixed difference
+				++nsites;
 			}
-
-			++nsites;
 			vcfstr.clear();
 		}
 	}
@@ -297,7 +285,7 @@ unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> 
 	return counts;
 }
 
-int expectedParams(const std::string &vcf, const std::string &incfile, const std::string &exfile, const std::vector<int> &popmap, int passonly, double* ps0, double* ps1, double* pd01) {
+int expectedParams(const std::string &vcf, const std::string &incfile, const std::string &exfile, const std::vector<int> &popmap, int passonly, double* ps, double* pd) {
 	// make bcftools call
 	std::string cmd("bcftools view -H");
 	if (!incfile.empty()) cmd += (" -R " + incfile);
@@ -311,48 +299,45 @@ int expectedParams(const std::string &vcf, const std::string &incfile, const std
 	}
 
 	unsigned long total_counts = 0;
-	for (int i = 0; i<3; i++) total_counts += counts[i];
+	for (int i = 1; i<3; i++) total_counts += counts[i];
 	if (total_counts == 0) {
 		std::cerr << "ERROR: Cannot estimate variability parameters, zero informative sites\n";
 		return -1;
 	}
 
-	*ps0 = static_cast<double>(counts[0])/total_counts;
-	*ps1 = static_cast<double>(counts[1])/total_counts;
-	*pd01 = static_cast<double>(counts[2])/total_counts;
+	*ps = static_cast<double>(counts[1])/total_counts;
+	*pd = static_cast<double>(counts[2])/total_counts;
 
 	return 0;
 }
 
-double hkaGOF (double s0, double s1, double d01, double es0, double es1, double ed01) {
+double hkaGOF (double s, double d, double es, double ed) {
 	/*
 	* calculates HKA statistic
-	* X2 = (s0 - es0)^2/es0 + (s1 + es1)^2/es1 + (d01 - ed01)^2/ed01
-	* s0 = observed number sites segregating within pop0 only
-	* es0 = expected number sites segregating within pop0 only
-	* s1 = observed number sites segregating within pop1 only
-	* es1 = expected number sites segregating within pop1 only
-	* d01 = observed number of fixed difference sites between pop0 and pop1
-	* ed01 = expected number of fixed difference sites between pop0 and pop1
+	* X2 = (s - es)^2/es + (d - ed)^2/ed
+	* s = observed number sites segregating within ingroup
+	* es = expected number sites segregating within ingroup
+	* d = observed number of fixed difference sites between ingroup and outgroup
+	* ed = expected number of fixed difference sites between ingroup and outgroup
 	*
 	* making the observed counts doubles instead of ints in case they are calculated from likelihoods
 	*/
 
 	double x2;
 
-	if (es0 <= 0 || es1 <= 0 || ed01 <= 0) {
-		std::cerr << "\nERROR:Invalid expected counts for HKA goodness-of-fit calculation\nes0: " << es0 << "\nes1: " << es1 << "\ned01: " << ed01 << "\n\n";
+	if (es <= 0 || ed <= 0) {
+		std::cerr << "\nERROR:Invalid expected counts for HKA goodness-of-fit calculation\nes: " << es << "\ned: " << ed << "\n\n";
 		x2 = -999;
 		throw(-1);
 	}
 
-	x2 = pow((s0 - es0),2.0)/es0 + pow((s1 - es1),2.0)/es1 + pow((d01 - ed01),2.0)/ed01;
+	x2 = pow((s - es),2.0)/es + pow((d - ed),2.0)/ed;
 	return x2;
 }
 
-double* testRegion (const std::string &vcf, const std::string &region, const std::vector<int> &popmap, int passonly, double ps0, double ps1, double pd01, double* stats) {
+double* testRegion (const std::string &vcf, const std::string &region, const std::vector<int> &popmap, int passonly, double ps, double pd, double* stats) {
 
-	// stats should be a double array of length 7 that stores [x2, s0, es0, s1, es1, d01, ed01]
+	// stats should be a double array of length 5 that stores [x2, s, es, d, ed]
 
 	unsigned long counts [3];
 	unsigned int a, b;
@@ -379,22 +364,20 @@ double* testRegion (const std::string &vcf, const std::string &region, const std
 		if (countVarPatterns(cmd, popmap, passonly, counts) == NULL) {
                 	return NULL;
 		}
-		stats[1] = counts[0]; // s0
-		stats[3] = counts[1]; // s1
-		stats[5] = counts[2]; // d01
+		stats[1] = counts[1]; // s
+		stats[3] = counts[2]; // d
 
 		unsigned int effective_length = 0;
-		for (int i=0; i<3; ++i) effective_length += counts[i];
+		for (int i=1; i<3; ++i) effective_length += counts[i];
 		std::cerr << "effective length: " << effective_length << "\n";
 
 		// calculate expected counts
-		stats[2] = ps0 * effective_length; // es0
-		stats[4] = ps1 * effective_length; // es1
-		stats[6] = pd01 * effective_length; // ed01
+		stats[2] = ps * effective_length; // es
+		stats[4] = pd * effective_length; // ed
 
 		// calculate hka goodness-of-fit stat
 		try {
-			stats[0] = hkaGOF(stats[1], stats[3], stats[5], stats[2], stats[4], stats[6]);
+			stats[0] = hkaGOF(stats[1], stats[3], stats[2], stats[4]);
 		}
 		catch (int e) {
 			return NULL;
@@ -407,7 +390,7 @@ double* testRegion (const std::string &vcf, const std::string &region, const std
 		}
 	}
 
-	// make sure region were processed correctly
+	// make sure region was processed correctly
 	if (chr.empty() || start.empty() || end.empty()) {
 		std::cerr << "ERROR: Invalid test region\n";
 		return NULL;
@@ -433,13 +416,12 @@ int hka (int argc, char** argv) {
 	std::string exfile; // file of regions to exclude when calculating probabilities for expectations
 	std::string outfile; // output file
 	int passonly = 0; // if 1 analyze only sites with PASS in FILTER vcf field
-	double ps0 = 0; // probability neutral site is variable within pop0 only
-	double ps1 = 0; // probability neutral site is variable within pop1 only
-	double pd01 = 0; // probability that neutral site is fixed between pops 0 and 1
+	double ps = 0; // probability neutral site is variable within ingroup
+	double pd = 0; // probability that neutral site is fixed between ingroup and outgroup
 	int preprob = 0; // if 1, probabilities for expectation calculation have been supplied
 
 	// parse arguments
-	if ((rv = hkaArgs(argc, argv, vcf, popfile, regionfile, region, outfile, exfile, incfile, passonly, ps0, ps1, pd01, preprob)) < 0) {
+	if ((rv = hkaArgs(argc, argv, vcf, popfile, regionfile, region, outfile, exfile, incfile, passonly, ps, pd, preprob)) < 0) {
 		return -1;
 	} else if (rv) {
 		return 0;
@@ -494,28 +476,28 @@ int hka (int argc, char** argv) {
 	// Estimate parameters for obtaining expectations from the genome
 	if (!preprob) {
 		std::cerr << "Estimating parameters\n";
-		if((rv = expectedParams(vcf, incfile, exfile, popmap, passonly, &ps0, &ps1, &pd01))) {
+		if((rv = expectedParams(vcf, incfile, exfile, popmap, passonly, &ps, &pd))) {
 			return rv;
 		}
-		std::cerr << "\nPARAMETER ESTIMATES\n" << "ps0: " << ps0 << "\nps1: " << ps1 << "\npd01: " << pd01 << "\n\n";
+		std::cerr << "\nPARAMETER ESTIMATES\n" << "ps: " << ps << "\npd: " << pd << "\n\n";
 	}
 
-	if ( fabs(1.0 - ps0 - ps1 - pd01) > COMPRECISION ) {
-		std::cerr << "ERROR: ps0, ps1, and pd01 do not sum to 1\n";
+	if ( fabs(1.0 - ps - pd) > COMPRECISION ) {
+		std::cerr << "ERROR: ps and pd do not sum to 1\n";
 		return -1;
 	}
 
 	// Calculate observed values and calculate statistic
 	std::cerr << "Counting observed polymorphisms and calculating HKA statistic\n";
-	const int nstats = 7;
+	const int nstats = 5;
 	double stats[nstats];
-	int df = 2; // degrees of freedom for GOF test
+	int df = 1; // degrees of freedom for GOF test
 	double p,pval;
-	out_stream << "chr\tstart\tend\tX2\tpval\tobsS0\texpS0\tobsS1\texpS1\tobsD01\texpD01\n";
+	out_stream << "chr\tstart\tend\tX2\tpval\tobsS\texpS\tobsD\texpD\n";
 
 	while (!region.empty() || getline(rf_stream, region)) {
 		std::cerr << region << "\n";
-		testRegion (vcf, region, popmap, passonly, ps0, ps1, pd01, stats);
+		testRegion (vcf, region, popmap, passonly, ps, pd, stats);
 		if (stats != NULL) {
 			// calculate X2 stat p-value
 			if((p = statdist::pchisq(stats[0], df)) == -999) {
@@ -541,7 +523,7 @@ int hka (int argc, char** argv) {
 void mainInfo () {
 	int w1 = 8;
 
-	std::cerr << "selkit: A toolbix for popgen selection analyses\n"
+	std::cerr << "selkit: A toolbox for popgen selection analyses\n"
 	<< "\nselkit [command] [command arguments]\n"
 	<< "\nCommands:\n"
 	<< std::setw(w1) << std::left << "hka" << "HKA test\n"
