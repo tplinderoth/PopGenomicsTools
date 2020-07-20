@@ -58,6 +58,21 @@ std::string formatRegion(std::string s) {
 	return sfmt;
 }
 
+std::string compactRegion(const std::string &reg) {
+	std::stringstream ss(reg);
+	std::string regstr("");
+	std::string tok;
+	int c = 0;
+	while (ss >> tok) {
+		regstr += tok;
+		if (c < 2) {
+			regstr += c == 0 ? ":" : "-";
+		}
+		++c;
+	}
+	return regstr;
+}
+
 int hkaArgs (int argc, char** argv, std::string &vcf, std::string &popfile, std::string &rf, std::string &rstr, std::string &out, std::string &exfile, std::string &incfile,
 	int &passonly, double &ps, double &pd, int &preprob) {
 	if (argc < 3 || strcmp(argv[2],"-help") == 0) {
@@ -221,7 +236,7 @@ int countAlt(const std::string &geno) {
 	return count;
 }
 
-unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> &popmap, int passonly, unsigned long *counts) {
+void countVarPatterns (const std::string &cmd, const std::vector<int> &popmap, int passonly, unsigned long *counts) {
 	// count number of segregating sites within each population
 	// and the number of fixed differences
 
@@ -255,17 +270,14 @@ unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> 
 					if (altcount >= 0) {
 						site_counts[popmap[c]][0] += altcount;
 						site_counts[popmap[c]][1] += 2;
-					} else if (altcount == -99 ){
-						std::cerr << "ERROR: Bad genotype format: " << tok << "\n";
-						return NULL;
+					} else if (altcount == -99 ) {
+						std::string errorstr ("Bad genotype format: " + tok);
+						throw(errorstr.c_str());
 					}
 				}
 				++c;
 			}
-			if (c < nind) {
-				std::cerr << c << "\t" << "ERROR: VCF is truncated\n";
-				return NULL;
-			}
+			if (c < nind) throw("VCF is truncated");
 
 			// count patterns if site has data for both populations
 			if (site_counts[0][1] > 0 && site_counts[1][1] > 0) {
@@ -281,8 +293,6 @@ unsigned long* countVarPatterns (const std::string &cmd, const std::vector<int> 
 	}
 
 	if (nsites == 0) std::cerr << "WARNING: '" << cmd << "' returned zero sites\n";
-
-	return counts;
 }
 
 int expectedParams(const std::string &vcf, const std::string &incfile, const std::string &exfile, const std::vector<int> &popmap, int passonly, double* ps, double* pd) {
@@ -294,7 +304,10 @@ int expectedParams(const std::string &vcf, const std::string &incfile, const std
 	cmd += (" " + vcf);
 
 	unsigned long counts[3];
-	if (countVarPatterns(cmd, popmap, passonly, counts) == NULL) {
+	try {
+		countVarPatterns(cmd, popmap, passonly, counts);
+	} catch (const char* msg) {
+		std::cerr << "ERROR: " << msg << "\n";
 		return -1;
 	}
 
@@ -335,7 +348,7 @@ double hkaGOF (double s, double d, double es, double ed) {
 	return x2;
 }
 
-double* testRegion (const std::string &vcf, const std::string &region, const std::vector<int> &popmap, int passonly, double ps, double pd, double* stats) {
+void testRegion (const std::string &vcf, const std::string &region, const std::vector<int> &popmap, int passonly, double ps, double pd, double* stats) {
 
 	// stats should be a double array of length 5 that stores [x2, s, es, d, ed]
 
@@ -350,10 +363,7 @@ double* testRegion (const std::string &vcf, const std::string &region, const std
 		start_stream >> a;
 		std::stringstream end_stream(end);
 		end_stream >> b;
-		if (a > b) {
-			std::cerr << "ERROR: Region start greater than region end\n";
-			return NULL;
-		}
+		if (a > b) throw ("region start greater than region end");
 
 		// make bcftools call command
 		std::string cmd("bcftools view -H -r " + chr + ":" + start + "-" + end);
@@ -361,15 +371,22 @@ double* testRegion (const std::string &vcf, const std::string &region, const std
 		cmd +=  " " + vcf;
 
 		// count polymorphic and fixed sites
-		if (countVarPatterns(cmd, popmap, passonly, counts) == NULL) {
-                	return NULL;
+		try {
+			countVarPatterns(cmd, popmap, passonly, counts);
+		} catch (const char* msg) {
+			throw(msg);
 		}
 		stats[1] = counts[1]; // s
 		stats[3] = counts[2]; // d
 
 		unsigned int effective_length = 0;
 		for (int i=1; i<3; ++i) effective_length += counts[i];
-		std::cerr << "effective length: " << effective_length << "\n";
+		if (effective_length > 0) {
+			std::cerr << "effective length: " << effective_length << "\n";
+		} else {
+			std::cerr << "WARNING: Effective length is zero.";
+			throw(1);
+		}
 
 		// calculate expected counts
 		stats[2] = ps * effective_length; // es
@@ -380,7 +397,7 @@ double* testRegion (const std::string &vcf, const std::string &region, const std
 			stats[0] = hkaGOF(stats[1], stats[3], stats[2], stats[4]);
 		}
 		catch (int e) {
-			return NULL;
+			throw(e);
 		}
 
 		if (ss.rdbuf()->in_avail()) {
@@ -391,12 +408,7 @@ double* testRegion (const std::string &vcf, const std::string &region, const std
 	}
 
 	// make sure region was processed correctly
-	if (chr.empty() || start.empty() || end.empty()) {
-		std::cerr << "ERROR: Invalid test region\n";
-		return NULL;
-	}
-
-	return stats;
+	if (chr.empty() || start.empty() || end.empty()) throw("Invalid test region");
 }
 
 int hka (int argc, char** argv) {
@@ -497,23 +509,28 @@ int hka (int argc, char** argv) {
 
 	while (!region.empty() || getline(rf_stream, region)) {
 		std::cerr << region << "\n";
-		testRegion (vcf, region, popmap, passonly, ps, pd, stats);
-		if (stats != NULL) {
-			// calculate X2 stat p-value
-			if((p = statdist::pchisq(stats[0], df)) == -999) {
-				return -1;
+		try {
+			testRegion(vcf, region, popmap, passonly, ps, pd, stats);
+		} catch (const char* errormsg) {
+			std::cerr << "ERROR: " << errormsg << "\n";
+			return -1;
+		} catch (int errorval) {
+			if (errorval == 1)  {
+				std::cerr << " Skipping " << compactRegion(region) << "\n";
+				region.clear();
+				continue;
 			}
-			pval = 1.0-p;
-			// print results
-			out_stream << region << "\t" << stats[0] << "\t" << pval;
-			for (int i=1; i<nstats; i++) {
-				out_stream << "\t" << stats[i];
-			}
-			out_stream << "\n";
-		} else {
-			std::cerr << "Failed to calculate HKA statistic\n";
 			return -1;
 		}
+		// calculate X2 stat p-value
+		if ((p = statdist::pchisq(stats[0], df)) == -999) return -1;
+		pval = 1.0-p;
+		// print results
+		out_stream << region << "\t" << stats[0] << "\t" << pval;
+		for (int i=1; i<nstats; i++) {
+			out_stream << "\t" << stats[i];
+		}
+		out_stream << "\n";
 		region.clear();
 	}
 
