@@ -11,7 +11,7 @@
 #include <vector>
 #include "StatDist.h"
 
-# define COMPRECISION 1e-7 // max precision for comparing floats
+# define COMPRECISION 1e-6 // max precision for comparing floats
 
 // General functions
 int main (int argc, char** argv);

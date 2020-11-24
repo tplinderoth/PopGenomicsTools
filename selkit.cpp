@@ -494,7 +494,7 @@ int hka (int argc, char** argv) {
 		std::cerr << "\nPARAMETER ESTIMATES\n" << "ps: " << ps << "\npd: " << pd << "\n\n";
 	}
 
-	if ( fabs(1.0 - ps - pd) > COMPRECISION ) {
+	if ( fabs(1.0 - (ps + pd)) > COMPRECISION ) {
 		std::cerr << "ERROR: ps and pd do not sum to 1\n";
 		return -1;
 	}
