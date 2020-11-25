@@ -293,6 +293,7 @@ void countVarPatterns (const std::string &cmd, const std::vector<int> &popmap, i
 	}
 
 	if (nsites == 0) std::cerr << "WARNING: '" << cmd << "' returned zero sites\n";
+	if (pclose(fp) == -1) throw(-1);
 }
 
 int expectedParams(const std::string &vcf, const std::string &incfile, const std::string &exfile, const std::vector<int> &popmap, int passonly, double* ps, double* pd) {
@@ -309,6 +310,8 @@ int expectedParams(const std::string &vcf, const std::string &incfile, const std
 	} catch (const char* msg) {
 		std::cerr << "ERROR: " << msg << "\n";
 		return -1;
+	} catch (int errval) {
+		return errval;
 	}
 
 	unsigned long total_counts = 0;
@@ -375,6 +378,8 @@ void testRegion (const std::string &vcf, const std::string &region, const std::v
 			countVarPatterns(cmd, popmap, passonly, counts);
 		} catch (const char* msg) {
 			throw(msg);
+		} catch (int errval) {
+			throw(errval);
 		}
 		stats[1] = counts[1]; // s
 		stats[3] = counts[2]; // d
