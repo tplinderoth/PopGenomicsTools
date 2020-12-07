@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -O3 -Wall
-BIN = fstWindow hetWindow ihsWindow dxyWindow pafAlleles selkit
+BIN = fstWindow hetWindow ihsWindow xpehhWindow dxyWindow pafAlleles selkit
 
 all: $(BIN)
 
@@ -10,6 +10,8 @@ hetWindow: hetWindow.cpp
 	$(CXX) $(CXXFLAGS) hetWindow.cpp -o hetWindow
 ihsWindow: ihsWindow.cpp
 	$(CXX) $(CXXFLAGS) ihsWindow.cpp -o ihsWindow
+xpehhWindow: xpehhWindow.cpp
+	$(CXX) $(CXXFLAGS) xpehhWindow.cpp -o xpehhWindow
 dxyWindow: dxyWindow.cpp
 	$(CXX) $(CXXFLAGS) dxyWindow.cpp -o dxyWindow -lz -lboost_iostreams
 pafAlleles: pafAlleles.cpp
