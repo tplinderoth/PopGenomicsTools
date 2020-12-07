@@ -179,16 +179,18 @@ int calcXpehhWindows(std::ifstream &xpehhstream, const double cutoff, const unsi
 				if (chrlen && winend > chrlen) winend = chrlen;
 				printWindow(chr, winstart, winend, 0, 0, outlierstat);
 			}
-			winstart = 1;
-			winend = winstart + (winsize-1);
 			nsites = 0;
 			if (!lenmap.empty() && lenmap.find(newchr) != lenmap.end()) {
 				chrlen = lenmap[newchr];
 			} else chrlen = 0;
+			winstart = 1;
+                        winend = winstart + (winsize-1);
+			if (chrlen && winend > chrlen) winend = chrlen;
 		} else if (pos >= winend) {
 			printWindow(chr, winstart, winend, nbig, nsites, outlierstat);
 			winstart = winend+1;
 			winend = winstart + (winsize-1);
+			if (chrlen && winend > chrlen) winend = chrlen;
 			nsites = 0;
 			while (pos > winend) {
 				printWindow(chr, winstart, winend, 0, 0, outlierstat);
