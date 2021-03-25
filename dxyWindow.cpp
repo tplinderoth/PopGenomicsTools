@@ -174,7 +174,7 @@ std::vector<sitedata>::iterator calcWindow (std::vector<sitedata> &dxywin, std::
 	int nskip = 0;
 
 	for(i=0; i<*nsites; ++i) {
-		if (dxywin[i].second > 0) {
+		if (dxywin[i].second >= 0) {
 			dxy += dxywin[i].second;
 			++neffective;
 		} else if (dxywin[i].second == -9) {
