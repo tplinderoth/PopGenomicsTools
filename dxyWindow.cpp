@@ -40,14 +40,16 @@ void helpInfo (unsigned int winsize, unsigned int stepsize, int minind, int fixe
 	<< std::setw(w1) << std::left << "-winsize" << std::setw(w2) << std::left << "INT" << "Window size in base pairs (0 for global calculation) [" << winsize << "]\n"
 	<< std::setw(w1) << std::left << "-stepsize" << std::setw(w2) << std::left << "INT" << "Number of base pairs to progress window [" << stepsize << "]\n"
 	<< std::setw(w1) << std::left << "-minind" << std::setw(w2) << std::left << "INT" << "Minimum number of individuals in each population with data [" << minind << "]\n"
-	<< std::setw(w1) << std::left << "-fixedsite" << std::setw(w2) << std::left << "INT" << "(1) Use fixed number of sites from MAF input (window sizes may vary) or (0) constant window size [" << fixedsite << "]\n"
-	<< std::setw(w1) << std::left << "-sizefile" << std::setw(w2) << std::left << "FILE" << "Two-column TSV file with eaching row having (1) chromsome name (2) chromosome size in base pairs\n" 
+	<< std::setw(w1) << std::left << "-fixedsite" << std::setw(w2) << std::left << "INT" << "(1) Use fixed number of sites from MAF input for each window (window sizes may vary) or (0) constant window size [" << fixedsite << "]\n"
+	<< std::setw(w1) << std::left << "-sizefile" << std::setw(w2) << std::left << "FILE" << "Two-column TSV file with each row having (1) chromsome name (2) chromosome size in base pairs\n" 
 	<< "\nNotes:\n"
 	<< "* -winsize 1 -stepsize 1 calculates per site dxy\n"
 	<< "* -sizefile is REQUIRED(!) with -fixedsite 0 (the default)\n"
 	<< "* Both input MAF files need to have the same chromosomes in the same order\n"
 	<< "* Assumes SNPs are biallelic across populations\n"
 	<< "* For global Dxy calculations only columns 4, 5, and 6 below are printed\n"
+	<< "* Input MAF files can contain all sites (including monomorphic sites) or just variable sites\n"
+	<< "* -fixedsite 1 -winsize 500 would for example ensure that all windows contain 500 SNPs\n"
 	<< "\nOutput:\n"
 	<< "(1) chromosome\n"
 	<< "(2) Window start\n"
@@ -335,11 +337,12 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 				}
 
 				while (positer < lastpos) {
-					++positer;
+					if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
 					winiter->first = positer;
 					winiter->second = -7;
+					++winiter;
 					++nsites;
-					if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
+					++positer;
 				}
 				if (nsites > (winsize-stepsize)) {
 					winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
@@ -354,12 +357,12 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 		if (winsize > 0 && !fixed_site && chr == prevchr) {
 		// catch window iterator up with the current site with data to process
 			while (positer < maf1site.position) {
+				if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
 				winiter->first = positer;
 				winiter->second = -7;
 				++winiter;
 				++nsites;
 				++positer;
-				if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
 			}
 		}
 
@@ -381,7 +384,7 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 			winiter->second = dxy;
 			++winiter;
 			++nsites;
-			positer = maf1site.position;
+			++positer;
 		}
 
 		// parse new lines from MAF files
@@ -404,11 +407,12 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 		}
 
 		while (positer < lastpos) {
-			++positer;
+			if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
 			winiter->first = positer;
 			winiter->second = -7;
+			++winiter;
 			++nsites;
-			if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
+			++positer;
 		}
 	}
 	if (nsites > (winsize-stepsize) && nsites <= winsize) {
