@@ -336,8 +336,8 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 					return -1;
 				}
 
-				while (positer < lastpos) {
-					if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
+				while (positer <= lastpos) {
+					if (nsites == winsize) winiter = calcWindow(dxywin, &prevchr, winsize, stepsize, &nsites);
 					winiter->first = positer;
 					winiter->second = -7;
 					++winiter;
@@ -345,7 +345,7 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 					++positer;
 				}
 				if (nsites > (winsize-stepsize)) {
-					winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
+					winiter = calcWindow(dxywin, &prevchr, winsize, stepsize, &nsites);
 				}
 		
 			} else {
@@ -354,7 +354,7 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 			positer = 1; // start at first position on new chromosome
 		}
 
-		if (winsize > 0 && !fixed_site && chr == prevchr) {
+		if (winsize > 0 && !fixed_site) {
 		// catch window iterator up with the current site with data to process
 			while (positer < maf1site.position) {
 				if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
@@ -406,7 +406,7 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 			return -1;
 		}
 
-		while (positer < lastpos) {
+		while (positer <= lastpos) {
 			if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
 			winiter->first = positer;
 			winiter->second = -7;
