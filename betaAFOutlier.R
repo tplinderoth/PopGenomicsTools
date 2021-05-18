@@ -2,7 +2,7 @@
 
 # betaAFOutlier.R
 # version 1.2
-# This is the the script to update and maintain
+# This is the script to update and maintain
 
 ### LIBRARIES
 library(rmutil, quietly=TRUE, warn.conflicts=FALSE) # betabinom
