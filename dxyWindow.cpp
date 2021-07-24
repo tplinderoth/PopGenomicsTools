@@ -32,7 +32,7 @@ struct Mafsite {
 };
 
 void helpInfo (unsigned int winsize, unsigned int stepsize, int minind, int fixedsite, int skip_missing) {
-	int w1 = 12;
+	int w1 = 14;
 	int w2 = 8;
 
 	std::cout << "\ndxyWindow [options] <pop1 maf file> <pop2 maf file>\n"
