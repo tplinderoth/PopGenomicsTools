@@ -19,7 +19,7 @@
 
 bool fexists(const char* filename) {
 	std::ifstream ifile(filename);
-	return ifile;
+	return !ifile ? 0:1;
 }
 
 void hkaInfo () {
