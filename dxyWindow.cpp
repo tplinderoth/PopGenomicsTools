@@ -31,7 +31,7 @@ struct Mafsite {
 	int nind;
 };
 
-void helpInfo (unsigned int winsize, unsigned int stepsize, int minind, int fixedsite) {
+void helpInfo (unsigned int winsize, unsigned int stepsize, int minind, int fixedsite, int skip_missing) {
 	int w1 = 12;
 	int w2 = 8;
 
@@ -41,7 +41,8 @@ void helpInfo (unsigned int winsize, unsigned int stepsize, int minind, int fixe
 	<< std::setw(w1) << std::left << "-stepsize" << std::setw(w2) << std::left << "INT" << "Number of base pairs to progress window [" << stepsize << "]\n"
 	<< std::setw(w1) << std::left << "-minind" << std::setw(w2) << std::left << "INT" << "Minimum number of individuals in each population with data [" << minind << "]\n"
 	<< std::setw(w1) << std::left << "-fixedsite" << std::setw(w2) << std::left << "INT" << "(1) Use fixed number of sites from MAF input for each window (window sizes may vary) or (0) constant window size [" << fixedsite << "]\n"
-	<< std::setw(w1) << std::left << "-sizefile" << std::setw(w2) << std::left << "FILE" << "Two-column TSV file with each row having (1) chromsome name (2) chromosome size in base pairs\n" 
+	<< std::setw(w1) << std::left << "-sizefile" << std::setw(w2) << std::left << "FILE" << "Two-column TSV file with each row having (1) chromsome name (2) chromosome size in base pairs\n"
+	<< std::setw(w1) << std::left << "-skip_missing" << std::setw(w2) << std::left << "INT" << "Do not print windows with zero effective sites if INT=1 [" << skip_missing << "]\n"
 	<< "\nNotes:\n"
 	<< "* -winsize 1 -stepsize 1 calculates per site dxy\n"
 	<< "* -sizefile is REQUIRED(!) with -fixedsite 0 (the default)\n"
@@ -60,11 +61,11 @@ void helpInfo (unsigned int winsize, unsigned int stepsize, int minind, int fixe
 }
 
 int parseArgs (int argc, char** argv, std::ifstream &pop1is, std::ifstream &pop2is, unsigned int &winsize, unsigned int &stepsize,
-		int &minind, int* infmt, std::ifstream &sizefile, int &fixedsite) {
+		int &minind, int* infmt, std::ifstream &sizefile, int &fixedsite, int &skip_missing) {
 	int rv = 0;
 
 	if (argc < 3) {
-		helpInfo(winsize, stepsize, minind, fixedsite);
+		helpInfo(winsize, stepsize, minind, fixedsite, skip_missing);
 		return 1;
 	}
 
@@ -113,7 +114,9 @@ int parseArgs (int argc, char** argv, std::ifstream &pop1is, std::ifstream &pop2
 				return -1;
 			}
 		} else if (strcmp(argv[argpos], "-fixedsite") == 0) {
-			fixedsite = atoi(argv[argpos+1]);		
+			fixedsite = atoi(argv[argpos+1]);
+		} else if (strcmp(argv[argpos], "-skip_missing") == 0) {
+			skip_missing = atoi(argv[argpos+1]);
 		} else {
 			std::cerr << "Unknown command: " << argv[argpos] << "\n";
 			return -1;
@@ -160,13 +163,13 @@ int parseSizes (std::ifstream &sizefstream, std::map<std::string, unsigned int>*
 			sizemap->insert( std::pair<std::string, unsigned int>(chrname, chrlen));
 		} else {
 			std::cerr << "Unable to correctly parse chromosome size file\n";
-			return -1;		
+			return -1;
 		}
 	}
 	return 0;
 }
 
-std::vector<sitedata>::iterator calcWindow (std::vector<sitedata> &dxywin, std::string* chr, const unsigned int &winsize, const unsigned int &step, unsigned int* nsites) {
+std::vector<sitedata>::iterator calcWindow (std::vector<sitedata> &dxywin, std::string* chr, const unsigned int &winsize, const unsigned int &step, unsigned int* nsites, const int &skip_missing) {
 
 	double dxy = 0;
 	unsigned int neffective = 0;
@@ -178,12 +181,14 @@ std::vector<sitedata>::iterator calcWindow (std::vector<sitedata> &dxywin, std::
 			dxy += dxywin[i].second;
 			++neffective;
 		} else if (dxywin[i].second == -9) {
-			++nskip;		
+			++nskip;
 		}
 	}
 
 	// print window info
-	std::cout << *chr << "\t" << dxywin[0].first << "\t" << dxywin[*nsites-1].first << "\t" << dxy << "\t" << neffective << "\t" << nskip << "\n";
+	if (neffective > 0 || !skip_missing) {
+		std::cout << *chr << "\t" << dxywin[0].first << "\t" << dxywin[*nsites-1].first << "\t" << dxy << "\t" << neffective << "\t" << nskip << "\n";
+	}
 
 	// prepare window for new values
 	static unsigned int nnew;
@@ -245,7 +250,8 @@ std::vector<sitedata>::iterator calcWindow (std::vector<sitedata> &dxywin, std::
 }
 */
 
-int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned int winsize, unsigned int stepsize, int minind, int fixed_site, std::map<std::string, unsigned int> &chrsize) {
+int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned int winsize, unsigned int stepsize, int minind, int fixed_site, 
+	std::map<std::string, unsigned int> &chrsize, int skip_missing) {
 	// set up zipped file reading if necessary for two maf input files
 	std::streambuf *inbuf1 = NULL;
 	boost::iostreams::filtering_streambuf<boost::iostreams::input> zipbuf1;
@@ -337,7 +343,7 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 				}
 
 				while (positer <= lastpos) {
-					if (nsites == winsize) winiter = calcWindow(dxywin, &prevchr, winsize, stepsize, &nsites);
+					if (nsites == winsize) winiter = calcWindow(dxywin, &prevchr, winsize, stepsize, &nsites, skip_missing);
 					winiter->first = positer;
 					winiter->second = -7;
 					++winiter;
@@ -345,11 +351,11 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 					++positer;
 				}
 				if (nsites > (winsize-stepsize)) {
-					winiter = calcWindow(dxywin, &prevchr, winsize, stepsize, &nsites);
+					winiter = calcWindow(dxywin, &prevchr, winsize, stepsize, &nsites, skip_missing);
 				}
-		
+
 			} else {
-				if (nsites > 0) winiter = calcWindow(dxywin, &prevchr, winsize, stepsize, &nsites);
+				if (nsites > 0) winiter = calcWindow(dxywin, &prevchr, winsize, stepsize, &nsites, skip_missing);
 			}
 			positer = 1; // start at first position on new chromosome
 		}
@@ -357,7 +363,7 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 		if (winsize > 0 && !fixed_site) {
 		// catch window iterator up with the current site with data to process
 			while (positer < maf1site.position) {
-				if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
+				if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites, skip_missing);
 				winiter->first = positer;
 				winiter->second = -7;
 				++winiter;
@@ -368,7 +374,7 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 
 		// check if window needs to be printed
 		if (winsize > 0 && nsites == winsize) {
-			winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);		
+			winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites, skip_missing);
 		}
 
 		// update global dxy
@@ -407,7 +413,7 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 		}
 
 		while (positer <= lastpos) {
-			if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
+			if (nsites == winsize) winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites, skip_missing);
 			winiter->first = positer;
 			winiter->second = -7;
 			++winiter;
@@ -416,7 +422,7 @@ int maf2dxy (std::ifstream &pop1is, std::ifstream &pop2is, int* infmt, unsigned 
 		}
 	}
 	if (nsites > (winsize-stepsize) && nsites <= winsize) {
-		winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites);
+		winiter = calcWindow(dxywin, &chr, winsize, stepsize, &nsites, skip_missing);
 	}
 
 	// print global information
@@ -470,7 +476,7 @@ std::vector<sitedata>::iterator calcWindow (std::vector<sitedata> &dxywin, std::
 	return (dxywin.begin() + nnew);
 }
 
-std::vector<sitedata>::iterator calcWindow_fixedsize (std::vector<sitedata> &dxywin, std::string* chr, const unsigned int &winsize, const unsigned int &step, 
+std::vector<sitedata>::iterator calcWindow_fixedsize (std::vector<sitedata> &dxywin, std::string* chr, const unsigned int &winsize, const unsigned int &step,
 unsigned int &winstart, unsigned int &winend, unsigned int* nsites) {
 
 	double dxy = 0;
@@ -483,13 +489,13 @@ unsigned int &winstart, unsigned int &winend, unsigned int* nsites) {
 			dxy += dxywin[i].second;
 			++neffective;
 		} else if (dxywin[9].second == -9) {
-			++nskip;		
+			++nskip;
 		}
 	}
 
 	// print window info
 	std::cout << *chr << "\t" << winstart << "\t" << winend << "\t" << dxy << "\t" << neffective << "\t" << nskip << "\n";
-	
+
 	// prepare window for new values
 	static unsigned int nnew;
 	if (*nsites == winsize) {
@@ -525,15 +531,16 @@ int main (int argc, char** argv) {
 	int minind = 1; // minimum number of individuals with data in each population to calculate dxy for site
 	int infmt [2]; // 0 = maf file unzipped, 1 = maf file gzipped
 	int fixedsite = 0;
+	int skip_missing = 0; // do not print windows with zero effective sites if 1
 	std::map<std::string, unsigned int> chrsize;
 
-	if ((rv = parseArgs(argc, argv, pop1is, pop2is, winsize, stepsize, minind, infmt, chrfile, fixedsite))) {
+	if ((rv = parseArgs(argc, argv, pop1is, pop2is, winsize, stepsize, minind, infmt, chrfile, fixedsite, skip_missing))) {
 		if (rv == 1) rv = 0;
 	} else {
 		if (!fixedsite) {
 			rv = parseSizes(chrfile, &chrsize);
 		}
-		if (!rv) rv = maf2dxy(pop1is, pop2is, infmt, winsize, stepsize, minind, fixedsite, chrsize);
+		if (!rv) rv = maf2dxy(pop1is, pop2is, infmt, winsize, stepsize, minind, fixedsite, chrsize, skip_missing);
 	}
 
 	if (pop1is.is_open()) pop1is.close();
