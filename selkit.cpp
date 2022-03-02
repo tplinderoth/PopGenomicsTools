@@ -36,6 +36,7 @@ void hkaInfo () {
 	<< std::setw(w1) << std::left << "-ps" << "Probability of a neutral site being polymorphic within the ingroup\n"
 	<< std::setw(w1) << std::left << "-pd" << "Probability that a neutral site is fixed between the ingroup and outgroup\n"
 	<< std::setw(w1) << std::left << "-passonly" << "Use only sites with PASS in VCF FILTER field\n"
+	<< std::setw(w1) << std::left << "-ratesonly" << "Only calculate the parameters used for HKA expectations\n"
 	<< "\nHKA statistic calculated by comparing all ingroup individuals to all outgroup individuals.\n"
 	<< "If supplying precalculated probabilities -ps and -pd must sum to 1.\n"
 	<< "\n";
@@ -74,7 +75,7 @@ std::string compactRegion(const std::string &reg) {
 }
 
 int hkaArgs (int argc, char** argv, std::string &vcf, std::string &popfile, std::string &rf, std::string &rstr, std::string &out, std::string &exfile, std::string &incfile,
-	int &passonly, double &ps, double &pd, int &preprob) {
+	int &passonly, double &ps, double &pd, int &preprob, int &ratesonly) {
 	if (argc < 3 || strcmp(argv[2],"-help") == 0) {
 		hkaInfo();
 		return 1;
@@ -125,7 +126,10 @@ int hkaArgs (int argc, char** argv, std::string &vcf, std::string &popfile, std:
 		} else if (strcmp(argv[c],"-passonly") == 0) {
 			passonly = 1;
 			c--;
-		} else {
+		} else if (strcmp(argv[c],"-ratesonly") == 0) {
+			ratesonly = 1;
+			c--;
+		}else {
 			std::cerr << "Unknown argument: " << argv[c] << "\n";
 			return -1;
 		}
@@ -296,7 +300,7 @@ void countVarPatterns (const std::string &cmd, const std::vector<int> &popmap, i
 	if (pclose(fp) == -1) throw(-1);
 }
 
-int expectedParams(const std::string &vcf, const std::string &incfile, const std::string &exfile, const std::vector<int> &popmap, int passonly, double* ps, double* pd) {
+int expectedParams(const std::string &vcf, const std::string &incfile, const std::string &exfile, const std::vector<int> &popmap, int passonly, double* ps, double* pd, unsigned long* counts) {
 	// make bcftools call
 	std::string cmd("bcftools view -H");
 	if (!incfile.empty()) cmd += (" -R " + incfile);
@@ -304,7 +308,6 @@ int expectedParams(const std::string &vcf, const std::string &incfile, const std
 	if (passonly) cmd += " -f PASS";
 	cmd += (" " + vcf);
 
-	unsigned long counts[3];
 	try {
 		countVarPatterns(cmd, popmap, passonly, counts);
 	} catch (const char* msg) {
@@ -436,9 +439,10 @@ int hka (int argc, char** argv) {
 	double ps = 0; // probability neutral site is variable within ingroup
 	double pd = 0; // probability that neutral site is fixed between ingroup and outgroup
 	int preprob = 0; // if 1, probabilities for expectation calculation have been supplied
+	int ratesonly = 0; // if 1, only calculate the rates used for HKA expectations
 
 	// parse arguments
-	if ((rv = hkaArgs(argc, argv, vcf, popfile, regionfile, region, outfile, exfile, incfile, passonly, ps, pd, preprob)) < 0) {
+	if ((rv = hkaArgs(argc, argv, vcf, popfile, regionfile, region, outfile, exfile, incfile, passonly, ps, pd, preprob, ratesonly)) < 0) {
 		return -1;
 	} else if (rv) {
 		return 0;
@@ -450,24 +454,33 @@ int hka (int argc, char** argv) {
 	}
 
 	// open output stream
-	std::ofstream out_stream;
+	std::ofstream outfile_stream;
+	std::streambuf* outbuf = NULL;
 	if (!outfile.empty()) {
-		out_stream.open(outfile.c_str());
-		if (!out_stream) {
+		outfile_stream.open(outfile.c_str());
+		if (!outfile_stream) {
 			std::cerr << "ERROR: Unable to open output file " << outfile << "\n";
 			return -1;
 		}
+		outbuf = outfile_stream.rdbuf();
 	} else {
-		std::cerr << "ERROR: No output file name, must supply -out\n";
-		return -1;
+		outbuf = std::cout.rdbuf(); // if an output file not specified, write to standard out
+		//std::cerr << "ERROR: No output file name, must supply -out\n";
+		//return -1;
 	}
+	std::ostream out_stream(outbuf);
 
 	// open input stream of regions to test
 	std::ifstream rf_stream;
-	if (!regionfile.empty()) {
-		rf_stream.open(regionfile.c_str());
-		if (!rf_stream) {
-			std::cerr << "ERROR: Unable to open file of regions to test " << regionfile << "\n";
+	if (!ratesonly) {
+		if (!regionfile.empty()) {
+			rf_stream.open(regionfile.c_str());
+			if (!rf_stream) {
+				std::cerr << "ERROR: Unable to open file of regions to test " << regionfile << "\n";
+				return -1;
+			}
+		} else if (region.empty()) {
+			std::cerr << "ERROR: Must supply a region (-r) or regions file (-rf) for HKA test if not using -ratesonly\n";
 			return -1;
 		}
 	}
@@ -493,10 +506,19 @@ int hka (int argc, char** argv) {
 	// Estimate parameters for obtaining expectations from the genome
 	if (!preprob) {
 		std::cerr << "Estimating parameters\n";
-		if((rv = expectedParams(vcf, incfile, exfile, popmap, passonly, &ps, &pd))) {
+		unsigned long counts[3]; // pop0 variable n, pop1 variable n, fixed difference n
+		if((rv = expectedParams(vcf, incfile, exfile, popmap, passonly, &ps, &pd, counts))) {
 			return rv;
 		}
-		std::cerr << "\nPARAMETER ESTIMATES\n" << "ps: " << ps << "\npd: " << pd << "\n\n";
+
+		if (ratesonly) {
+			out_stream << "N_SEGREGATING\tN_FIXED\tPS\tPD\n";
+			out_stream << counts[1] << "\t" << counts[2] << "\t" << ps << "\t" << pd << "\n";
+			return rv;
+		} else {
+			std::cerr << "\nN_SEGREGATING\tN_FIXED\tPS\tPD\n";
+                        std::cerr << counts[1] << "\t" << counts[2] << "\t" << ps << "\t" << pd << "\n";
+		}
 	}
 
 	if ( fabs(1.0 - (ps + pd)) > COMPRECISION ) {
