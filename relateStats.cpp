@@ -18,6 +18,9 @@
 #include <algorithm>
 #include "Matrix.h"
 
+// type defintions
+typedef std::unordered_map<std::string, unsigned int> vecmap;
+
 // define classes and class functions
 
 // INDIV CLASS
@@ -140,10 +143,11 @@ void helpinfo() {
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Mosaic FSJ skew statistic (in development)\n"
 
 	<< "\nNotes:\n"
-	<<"* Assumes row/column order of individuals in relatedness matrix is the same as row order in ped file\n\n";
+	<<"* Assumes first row of relatdness matrix contains individual IDs\n\n";
 }
 
-int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix, std::vector <int> &pedstat, std::vector <int> &skewstat) {
+int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix, std::vector <int> &pedstat, std::vector <int> &skewstat, std::ifstream &anc_is,
+	std::ifstream &pop_is, int &mincohort, int &maxcohort) {
 	int rv = 0;
 	int argpos = 1;
 	if (argc < 2 || strcmp(argv[argpos], "-h") == 0 || strcmp(argv[argpos],"--help") == 0) {
@@ -182,11 +186,41 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 				return -1;
 			}
 			skewstat.push_back(s);
+		} else if (strcmp(argv[argpos],"--anc") == 0) {
+			const char* ancf_name = argv[argpos+1];
+			anc_is.open(ancf_name, std::ios_base::in);
+			if (!anc_is) {
+				std::cerr << "Unable to open file of ancestor IDs: " << ancf_name << "\n";
+				return -1;
+			}
+		} else if (strcmp(argv[argpos],"--pop") == 0) {
+			const char* popf_name = argv[argpos+1];
+			pop_is.open(popf_name, std::ios_base::in);
+			if (!pop_is) {
+				std::cerr << "Unable to open file of focal population IDs: " << popf_name << "\n";
+				return -1;
+			}
+		} else if (strcmp(argv[argpos],"--mincohort") == 0) {
+			mincohort = atoi(argv[argpos+1]);
+		} else if (strcmp(argv[argpos],"--maxcohort") == 0) {
+			maxcohort = atoi(argv[argpos+1]);
+		} else {
+			std::cerr << "Unknown argument: " << argv[argpos] << "\n";
+			return -1;
 		}
 		argpos += 2;
 	}
 
 	return rv;
+}
+
+size_t getIDs (std::ifstream &is, std::vector<std::string>* ids) {
+	std::string line;
+	while(getline(is, line)) {
+		ids->push_back(line);
+	}
+	ids->shrink_to_fit();
+	return (ids->size());
 }
 
 int readPed(std::ifstream &ped_is, std::vector<indiv>* ped, std::unordered_map<std::string, unsigned int>* pedidx) {
@@ -322,7 +356,8 @@ int readrMat (std::ifstream &rmat_is, std::unordered_map<std::string, unsigned i
 	return 0;
 }
 
-int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix) {
+int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix, std::vector<std::string>* pop,
+   std::vector<std::string> *anc, int mincohort, int maxcohort) {
 	int rv  = 0;
 
 	// open output stream
@@ -353,6 +388,7 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 	std::cerr << "Relatedness matrix dimensions: " << rmat.rown() << " x " << rmat.coln() << "\n";
 
 	// check matrix parsing (debug)
+	/*
 	for (std::vector<std::string>::iterator it = matids.begin(); it != matids.end(); ++it) {
 		std::cout << ((it == matids.begin())? "" : "\t" ) << *it;
 	}
@@ -363,8 +399,14 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 		}
 		std::cout << "\n";
 	}
+	*/
 
-	// check whether number of IDs in ped match number of row/columns in r matrix
+	// For for pedigree individuals not present in the relatedness matrix
+	for (vecmap::iterator it = pedidx.begin(); it != pedidx.end(); ++it) {
+		if (matidx.find(it->first) == matidx.end()) {
+			std::cerr << "warning: " << it->first << " missing from relatedness matrix\n";
+		}
+	}
 
 	// calculate statistics
 
@@ -382,11 +424,26 @@ int main (int argc, char** argv) {
 	std::string outprefix; // output prefix
 	std::vector <int> pedstat; // type of pedigree statistic to calculate
 	std::vector <int> skewstat; // type of skew statistic to calculate
+	std::ifstream anc_is; // focal individual input stream
+	std::ifstream pop_is; // focal population input stream
+	int maxcohort = -999, mincohort = -999;
 
 	// parse arguments
-	if ((rv = parseArgs(argc, argv, ped_is, rmat_is, outprefix, pedstat, skewstat))) {
+	if ((rv = parseArgs(argc, argv, ped_is, rmat_is, outprefix, pedstat, skewstat, anc_is, pop_is, mincohort, maxcohort))) {
 		if (rv == 1) rv = 0;
 		return rv;
+	}
+
+	// parse ID lists
+	std::vector<std::string> anc; // vector of ancestral individual IDs
+	if (anc_is && !getIDs(anc_is, &anc)) {
+		std::cerr << "error: Read zero ancestral IDs\n";
+		return -1;
+	}
+	std::vector<std::string> pop; // vector of individual IDs in focal population
+	if (pop_is && !getIDs(pop_is, &pop)) {
+		std::cerr << "error: Read zero focal population IDs\n";
+		return -1;
 	}
 
 	// calculate statistics
@@ -395,7 +452,7 @@ int main (int argc, char** argv) {
 	for (iter = pedstat.begin(); iter != pedstat.end(); iter++) {
 		if (*iter == 1) {
 			std::cerr << "Calculating Hunter expected contribution\n";
-			if ((rv = hunterStat(ped_is, rmat_is, outprefix))) return rv;
+			if ((rv = hunterStat(ped_is, rmat_is, outprefix, &pop, &anc, mincohort, maxcohort))) return rv;
 		}
 	}
 
