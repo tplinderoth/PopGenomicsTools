@@ -9,5 +9,6 @@ dxyWindow
 pafAlleles
 selkit
 xpehhWindow
+relateStats
 *.o
 *.d
