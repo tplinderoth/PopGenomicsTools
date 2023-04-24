@@ -439,7 +439,7 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 	for (std::string const &ancid : *anc) {
 		std::vector<std::vector<indiv*>> lineage;
 		unsigned int gen = 0;
-		lineage.resize(ped.size());
+		lineage.resize(ped.size()+1); // this is maximum possible generations + 1
 		lineage[gen].push_back(&ped[pedidx[ancid]]);
 		size_t noffspring = lineage[0][0]->offspring.size();
 		while (noffspring > 0) {
@@ -447,7 +447,6 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 			noffspring = 0;
 			for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
 				for (std::vector<std::string>::iterator offspring_iter = (*ind_iter)->offspring.begin(); offspring_iter != (*ind_iter)->offspring.end(); ++offspring_iter) {
-					//std::cout << *offspring_iter << "\n";
 					lineage[offgen].push_back(&ped[pedidx[*offspring_iter]]);
 					noffspring++;
 				}
@@ -461,7 +460,7 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 		if (draw) {
 			gen = 0;
 			drawstream << "## LINEAGE " << ancid << " ##\n";
-			while (lineage[gen].size() > 0) {
+			while (lineage[gen+1].size() > 0) {
 				std::string genstr("");
 				if (lineage[gen+1].size() > 0) drawstream << gen+1 << ": ";
 				for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
