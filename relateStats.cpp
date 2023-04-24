@@ -20,6 +20,7 @@
 
 // type defintions
 typedef std::unordered_map<std::string, unsigned int> vecmap;
+typedef std::unordered_map<std::string, unsigned int [2]> element_idx;
 
 // define classes and class functions
 
@@ -436,6 +437,9 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 	}
 
 	// process pedigree
+	std::vector<std::pair<std::string, double>> ind_stats;
+	ind_stats.reserve(anc->size());
+	double pop_total = 0;
 	for (std::string const &ancid : *anc) {
 		std::vector<std::vector<indiv*>> lineage;
 		unsigned int gen = 0;
@@ -455,6 +459,20 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 		}
 
 		// calculate statistics
+		element_idx indlog;
+		double ind_total = 0;
+		gen = 0;
+		std::cout << "## LINEAGE " << ancid << " ##\n";
+		unsigned int rowidx = matidx[ancid];
+		while (lineage[gen].size() > 0) {
+			for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
+				unsigned int colidx = matidx[(*ind_iter)->id()];
+				std::cout << rowidx << " " << colidx << "\n";
+				//std::string elem = matidx[ancid] + "." + matidx[(*ind_iter)->id()];
+				//std::cout << elem << "\n";
+			}
+			++gen;
+		}
 
 		// draw pedigrees
 		if (draw) {
