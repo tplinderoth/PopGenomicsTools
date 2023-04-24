@@ -31,18 +31,22 @@ public:
 	indiv(std::string);
 	std::string& setid(std::string);
 	std::string id () const;
+	void setPopValue (int value);
+	int popValue () const;
 	char sex; // M=male, F=female, '*'=missing
 	int cohort; // year class of individual, -999 = missing
-	std::vector<std::string> offspring; // vector of IDs of offspring
+	std::vector<std::string> offspring; // vector of offspring IDs
 private:
 	// members
 	std::string _id; // individual ID
+	int _popval; // population ID;
 };
 
 indiv::indiv (std::string id = "*")
         : sex('N'),
           cohort(-999),
-	 _id(id)
+	 _id(id),
+	 _popval(0)
 {}
 
 std::string& indiv::setid (std::string id = "") {
@@ -51,6 +55,10 @@ std::string& indiv::setid (std::string id = "") {
 }
 
 std::string indiv::id() const {return _id;}
+
+void indiv::setPopValue(int value) {_popval = value;}
+
+int indiv::popValue() const {return _popval;}
 
 // ARRAY CLASS
 template <class T>
@@ -136,18 +144,23 @@ void helpinfo() {
 	<< std::setw(w1) << std::left << "--rmat" << std::setw(w2) << std::left << "<FILE> Relatedness matrix\n"
 	<< std::setw(w1) << std::left << "--out" << std::setw(w2) << std::left << "<STRING> Output name prefix\n"
 
-	<< "\nOptions\n"
-	<< std::setw(w1) << std::left << "\n--pedStat" << std::setw(w2) << std::left << "<INT> Pedigree-based statistics\n"
-	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Expected genetic contribution from Hunter etal 2019\n"
-	<< std::setw(w1) << std::left << "\n--skewStat" << std::setw(2) << std::left << "<INT> Genetic skew statistics\n"
+	<< "\nOptions:\n"
+	<< std::setw(w1) << std::left << "--pedStat" << std::setw(w2) << std::left << "<INT> Pedigree-based statistics\n"
+	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Expected genetic contribution from Hunter etal 2019 (requires --anc)\n"
+	<< std::setw(w1) << std::left << "--skewStat" << std::setw(2) << std::left << "<INT> Genetic skew statistics\n"
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Mosaic FSJ skew statistic (in development)\n"
+	<< std::setw(w1) << std::left << "--pop" << std::setw(w2) << std::left << "<FILE> List of individuals IDs to restrict analyses to\n"
+	<< std::setw(w1) << std::left << "--anc" << std::setw(w2) << std::left << "<FILE> List of ancestor IDs\n"
+	<< std::setw(w1) << std::left << "--mincohort" << std::setw(w2) << std::left << "<INT> Exclude indviduals with cohort value below INT\n"
+	<< std::setw(w1) << std::left << "--maxcohort" << std::setw(w2) << std::left << "<INT> Exclude individuals with cohort value above INT\n"
+	<< std::setw(w1) << std::left << "--draw" << std::setw(w2) << std::left << "Output direct descendent pedigrees\n"
 
 	<< "\nNotes:\n"
 	<<"* Assumes first row of relatdness matrix contains individual IDs\n\n";
 }
 
 int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix, std::vector <int> &pedstat, std::vector <int> &skewstat, std::ifstream &anc_is,
-	std::ifstream &pop_is, int &mincohort, int &maxcohort) {
+	std::ifstream &pop_is, int &mincohort, int &maxcohort, int &draw) {
 	int rv = 0;
 	int argpos = 1;
 	if (argc < 2 || strcmp(argv[argpos], "-h") == 0 || strcmp(argv[argpos],"--help") == 0) {
@@ -204,6 +217,9 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 			mincohort = atoi(argv[argpos+1]);
 		} else if (strcmp(argv[argpos],"--maxcohort") == 0) {
 			maxcohort = atoi(argv[argpos+1]);
+		} else if (strcmp(argv[argpos], "--draw") == 0) {
+			draw = 1;
+			--argpos;
 		} else {
 			std::cerr << "Unknown argument: " << argv[argpos] << "\n";
 			return -1;
@@ -357,22 +373,33 @@ int readrMat (std::ifstream &rmat_is, std::unordered_map<std::string, unsigned i
 }
 
 int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix, std::vector<std::string>* pop,
-   std::vector<std::string> *anc, int mincohort, int maxcohort) {
+   std::vector<std::string> *anc, int mincohort, int maxcohort, int draw) {
 	int rv  = 0;
 
-	// open output stream
+	// open output streams
 	std::ofstream outstream((outprefix + ".pedstat1").c_str(), std::ios_base::out);
+
+	std::ofstream drawstream;
+	if (draw) drawstream.open((outprefix + ".topo").c_str(), std::ios_base::out);
 
 	// read in pedigree
 	std::vector<indiv> ped;
 	std::unordered_map<std::string, unsigned int> pedidx;
 	if ((rv = readPed(ped_is, &ped, &pedidx))) return rv;
 
+	// set focal population
+	for (std::vector<indiv>::iterator pediter = ped.begin(); pediter != ped.end(); ++pediter) {
+		int v = 1;
+		if (pop->size() > 0 && std::find(pop->begin(), pop->end(), pediter->id()) == pop->end()) v = 0;
+		pediter->setPopValue(v);
+	}
+
+
 	// check ped file parsing (debug)
 	/*
 	std::cerr << "ped vector size: " << ped.size() << "\nped index vector size: " << pedidx.size() << "\n";
 	for (std::vector<indiv>::iterator it = ped.begin(); it != ped.end(); it++) {
-		std::cout << it->id() << ":";
+		std::cout << it->id() << " " << it->popValue() << ":";
 		for (std::vector<std::string>::iterator child_iter = (*it).offspring.begin(); child_iter != (*it).offspring.end(); child_iter++) {
 			std::cout << " " << *child_iter;
 		}
@@ -403,15 +430,57 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 
 	// For for pedigree individuals not present in the relatedness matrix
 	for (vecmap::iterator it = pedidx.begin(); it != pedidx.end(); ++it) {
-		if (matidx.find(it->first) == matidx.end()) {
+		if (ped[it->second].popValue() != 0 && matidx.find(it->first) == matidx.end()) {
 			std::cerr << "warning: " << it->first << " missing from relatedness matrix\n";
 		}
 	}
 
-	// calculate statistics
+	// process pedigree
+	for (std::string const &ancid : *anc) {
+		std::vector<std::vector<indiv*>> lineage;
+		unsigned int gen = 0;
+		lineage.resize(ped.size());
+		lineage[gen].push_back(&ped[pedidx[ancid]]);
+		size_t noffspring = lineage[0][0]->offspring.size();
+		while (noffspring > 0) {
+			size_t offgen = gen+1;
+			noffspring = 0;
+			for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
+				for (std::vector<std::string>::iterator offspring_iter = (*ind_iter)->offspring.begin(); offspring_iter != (*ind_iter)->offspring.end(); ++offspring_iter) {
+					//std::cout << *offspring_iter << "\n";
+					lineage[offgen].push_back(&ped[pedidx[*offspring_iter]]);
+					noffspring++;
+				}
+			}
+			++gen;
+		}
+
+		// calculate statistics
+
+		// draw pedigrees
+		if (draw) {
+			gen = 0;
+			drawstream << "## LINEAGE " << ancid << " ##\n";
+			while (lineage[gen].size() > 0) {
+				std::string genstr("");
+				if (lineage[gen+1].size() > 0) drawstream << gen+1 << ": ";
+				for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
+					if ((*ind_iter)->offspring.size() == 0) continue;
+						genstr += "(" + (*ind_iter)->id() + ")";
+					for (std::vector<std::string>::iterator offspring_iter = (*ind_iter)->offspring.begin(); offspring_iter != (*ind_iter)->offspring.end(); ++offspring_iter) {
+						genstr += " " + *offspring_iter;
+					}
+					genstr += " ## ";
+				}
+				drawstream << genstr.substr(0,genstr.length()-4) << "\n";
+				++gen;
+			}
+		}
+	}
 
 	// close output stream
 	outstream.close();
+	if (drawstream.is_open()) drawstream.close();
 
 	return rv;
 }
@@ -427,24 +496,28 @@ int main (int argc, char** argv) {
 	std::ifstream anc_is; // focal individual input stream
 	std::ifstream pop_is; // focal population input stream
 	int maxcohort = -999, mincohort = -999;
+	int draw = 0; // draw direct descendent pedigree if 1
 
 	// parse arguments
-	if ((rv = parseArgs(argc, argv, ped_is, rmat_is, outprefix, pedstat, skewstat, anc_is, pop_is, mincohort, maxcohort))) {
+	if ((rv = parseArgs(argc, argv, ped_is, rmat_is, outprefix, pedstat, skewstat, anc_is, pop_is, mincohort, maxcohort, draw))) {
 		if (rv == 1) rv = 0;
 		return rv;
 	}
 
 	// parse ID lists
 	std::vector<std::string> anc; // vector of ancestral individual IDs
-	if (anc_is && !getIDs(anc_is, &anc)) {
+	if (anc_is.is_open() && !getIDs(anc_is, &anc)) {
 		std::cerr << "error: Read zero ancestral IDs\n";
 		return -1;
 	}
+	if (anc_is.is_open()) anc_is.close();
+
 	std::vector<std::string> pop; // vector of individual IDs in focal population
-	if (pop_is && !getIDs(pop_is, &pop)) {
+	if (pop_is.is_open() && !getIDs(pop_is, &pop)) {
 		std::cerr << "error: Read zero focal population IDs\n";
 		return -1;
 	}
+	if (pop_is.is_open()) pop_is.close();
 
 	// calculate statistics
 	std::vector<int>::iterator iter;
@@ -452,7 +525,11 @@ int main (int argc, char** argv) {
 	for (iter = pedstat.begin(); iter != pedstat.end(); iter++) {
 		if (*iter == 1) {
 			std::cerr << "Calculating Hunter expected contribution\n";
-			if ((rv = hunterStat(ped_is, rmat_is, outprefix, &pop, &anc, mincohort, maxcohort))) return rv;
+			if (anc.size() < 1) {
+				std::cerr << "Hunter stat requires passing ancestral individuals with --anc\n";
+				return -1;
+			}
+			if ((rv = hunterStat(ped_is, rmat_is, outprefix, &pop, &anc, mincohort, maxcohort, draw))) return rv;
 		}
 	}
 
