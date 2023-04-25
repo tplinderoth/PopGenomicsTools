@@ -521,7 +521,7 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 
 	// output statistics
 	if (pop_total == 0) std::cerr << "warning: Total ancestral contribution is zero\n";
-	outstream << "ID\tNUM_GENOME_COPIES\tGENOME_PROPORTION\n";
+	outstream << "ID\tN_GENOME_COPIES\tGENOME_PROPORTION\n";
 	for (sdpvec::iterator it = ind_stats.begin(); it != ind_stats.end(); ++it) {
 		outstream << it->first << "\t" << it->second << "\t" << it->second/pop_total << "\n";
 	}
