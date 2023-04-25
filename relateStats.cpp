@@ -36,6 +36,7 @@ public:
 	int popValue () const;
 	char sex; // M=male, F=female, '*'=missing
 	int cohort; // year class of individual, -999 = missing
+	bool group; // 0=exclude individual from population analysis, 1=include individual in pop analysis
 	std::vector<std::string> offspring; // vector of offspring IDs
 private:
 	// members
@@ -46,6 +47,7 @@ private:
 indiv::indiv (std::string id = "*")
         : sex('N'),
           cohort(-999),
+          group(1),
 	 _id(id),
 	 _popval(0)
 {}
@@ -150,8 +152,9 @@ void helpinfo() {
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Expected genetic contribution from Hunter etal 2019 (requires --anc)\n"
 	<< std::setw(w1) << std::left << "--skewStat" << std::setw(2) << std::left << "<INT> Genetic skew statistics\n"
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Mosaic FSJ skew statistic (in development)\n"
-	<< std::setw(w1) << std::left << "--pop" << std::setw(w2) << std::left << "<FILE> List of individuals IDs to restrict analyses to\n"
+	<< std::setw(w1) << std::left << "--pop" << std::setw(w2) << std::left << "<FILE> List of individual IDs to keep for analyses\n"
 	<< std::setw(w1) << std::left << "--anc" << std::setw(w2) << std::left << "<FILE> List of ancestor IDs\n"
+	<< std::setw(w1) << std::left << "--cohort" << std::setw(w2) << std::left << "<FILE> List of individual IDs to restrict genetic representation analyses to\n"
 	<< std::setw(w1) << std::left << "--mincohort" << std::setw(w2) << std::left << "<INT> Exclude indviduals with cohort value below INT\n"
 	<< std::setw(w1) << std::left << "--maxcohort" << std::setw(w2) << std::left << "<INT> Exclude individuals with cohort value above INT\n"
 	<< std::setw(w1) << std::left << "--draw" << std::setw(w2) << std::left << "Output direct descendent pedigrees\n"
@@ -161,7 +164,7 @@ void helpinfo() {
 }
 
 int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix, std::vector <int> &pedstat, std::vector <int> &skewstat, std::ifstream &anc_is,
-	std::ifstream &pop_is, int &mincohort, int &maxcohort, int &draw) {
+	std::ifstream &pop_is, int &mincohort, int &maxcohort, int &draw, std::ifstream &cohort_is) {
 	int rv = 0;
 	int argpos = 1;
 	if (argc < 2 || strcmp(argv[argpos], "-h") == 0 || strcmp(argv[argpos],"--help") == 0) {
@@ -212,6 +215,13 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 			pop_is.open(popf_name, std::ios_base::in);
 			if (!pop_is) {
 				std::cerr << "Unable to open file of focal population IDs: " << popf_name << "\n";
+				return -1;
+			}
+		} else if (strcmp(argv[argpos], "--cohort") == 0) {
+			const char* cohortf_name = argv[argpos+1];
+			cohort_is.open(cohortf_name, std::ios_base::in);
+			if (!cohort_is) {
+				std::cerr << "Unable to open cohort ID file " << cohortf_name << "\n";
 				return -1;
 			}
 		} else if (strcmp(argv[argpos],"--mincohort") == 0) {
@@ -374,7 +384,7 @@ int readrMat (std::ifstream &rmat_is, std::unordered_map<std::string, unsigned i
 }
 
 int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix, std::vector<std::string>* pop,
-   std::vector<std::string> *anc, int mincohort, int maxcohort, int draw) {
+   std::vector<std::string> *anc, int mincohort, int maxcohort, int draw, std::vector<std::string>* cohort) {
 	int rv  = 0;
 
 	// open output streams
@@ -390,16 +400,20 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 
 	// set focal population and count focal size
 	int effective_pop_n = 0;
+	int cohort_n = 0;
 	for (std::vector<indiv>::iterator pediter = ped.begin(); pediter != ped.end(); ++pediter) {
 		int v = 1;
 		if (pop->size() > 0 && std::find(pop->begin(), pop->end(), pediter->id()) == pop->end()) v = 0;
 		pediter->setPopValue(v);
+		if (cohort->size() > 0 && std::find(cohort->begin(), cohort->end(), pediter->id()) == cohort->end()) pediter->group = 0;
 		if (pediter->popValue() > 0) {
 			if ((mincohort != -999 && pediter->cohort < mincohort) || (maxcohort != -999 && pediter->cohort > maxcohort)) continue;
 			++effective_pop_n;
+			if (pediter->group) ++cohort_n;
 		}
 	}
 	std::cerr << "Focal population size: " << effective_pop_n << "\n";
+	std::cerr << "Focal cohort size: " << cohort_n << "\n";
 
 	// check ped file parsing (debug)
 	/*
@@ -489,7 +503,9 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 				//std::cout << elem << "\n"; // debug
 				if (seen.find(elem) == seen.end()) {
 					// relationship has not been recorded yet, so do so
-					ind_total += rmat[matidx[ancid]][matidx[(*ind_iter)->id()]];
+					if ((*ind_iter)->group) {
+						ind_total += rmat[matidx[ancid]][matidx[(*ind_iter)->id()]];
+					}
 					seen.insert({elem,1});
 				}
 			}
@@ -543,11 +559,12 @@ int main (int argc, char** argv) {
 	std::vector <int> skewstat; // type of skew statistic to calculate
 	std::ifstream anc_is; // focal individual input stream
 	std::ifstream pop_is; // focal population input stream
+	std::ifstream cohort_is; // list of IDs to calculate representation among
 	int maxcohort = -999, mincohort = -999;
 	int draw = 0; // draw direct descendent pedigree if 1
 
 	// parse arguments
-	if ((rv = parseArgs(argc, argv, ped_is, rmat_is, outprefix, pedstat, skewstat, anc_is, pop_is, mincohort, maxcohort, draw))) {
+	if ((rv = parseArgs(argc, argv, ped_is, rmat_is, outprefix, pedstat, skewstat, anc_is, pop_is, mincohort, maxcohort, draw, cohort_is))) {
 		if (rv == 1) rv = 0;
 		return rv;
 	}
@@ -567,6 +584,12 @@ int main (int argc, char** argv) {
 	}
 	if (pop_is.is_open()) pop_is.close();
 
+	std::vector<std::string> cohort; // vector of cohort IDs
+	if (cohort_is.is_open() && !getIDs(cohort_is, &cohort)) {
+		std::cerr << "error: Read zero cohort individual IDs\n";
+		return -1;
+	}
+
 	// calculate statistics
 	std::vector<int>::iterator iter;
 
@@ -577,7 +600,7 @@ int main (int argc, char** argv) {
 				std::cerr << "Hunter stat requires passing ancestral individuals with --anc\n";
 				return -1;
 			}
-			if ((rv = hunterStat(ped_is, rmat_is, outprefix, &pop, &anc, mincohort, maxcohort, draw))) return rv;
+			if ((rv = hunterStat(ped_is, rmat_is, outprefix, &pop, &anc, mincohort, maxcohort, draw, &cohort))) return rv;
 		}
 	}
 
