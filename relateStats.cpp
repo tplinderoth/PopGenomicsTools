@@ -20,7 +20,7 @@
 
 // type defintions
 typedef std::unordered_map<std::string, unsigned int> vecmap;
-typedef std::unordered_map<std::string, unsigned int [2]> element_idx;
+typedef std::vector<std::pair<std::string, double>> sdpvec;
 
 // define classes and class functions
 
@@ -388,13 +388,18 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 	std::unordered_map<std::string, unsigned int> pedidx;
 	if ((rv = readPed(ped_is, &ped, &pedidx))) return rv;
 
-	// set focal population
+	// set focal population and count focal size
+	int effective_pop_n = 0;
 	for (std::vector<indiv>::iterator pediter = ped.begin(); pediter != ped.end(); ++pediter) {
 		int v = 1;
 		if (pop->size() > 0 && std::find(pop->begin(), pop->end(), pediter->id()) == pop->end()) v = 0;
 		pediter->setPopValue(v);
+		if (pediter->popValue() > 0) {
+			if ((mincohort != -999 && pediter->cohort < mincohort) || (maxcohort != -999 && pediter->cohort > maxcohort)) continue;
+			++effective_pop_n;
+		}
 	}
-
+	std::cerr << "Focal population size: " << effective_pop_n << "\n";
 
 	// check ped file parsing (debug)
 	/*
@@ -440,6 +445,8 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 	std::vector<std::pair<std::string, double>> ind_stats;
 	ind_stats.reserve(anc->size());
 	double pop_total = 0;
+	std::unordered_map<std::string, int> seen;
+	seen.reserve(rmat.rown());
 	for (std::string const &ancid : *anc) {
 		std::vector<std::vector<indiv*>> lineage;
 		unsigned int gen = 0;
@@ -450,29 +457,46 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 			size_t offgen = gen+1;
 			noffspring = 0;
 			for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
-				for (std::vector<std::string>::iterator offspring_iter = (*ind_iter)->offspring.begin(); offspring_iter != (*ind_iter)->offspring.end(); ++offspring_iter) {
-					lineage[offgen].push_back(&ped[pedidx[*offspring_iter]]);
-					noffspring++;
+				if ((*ind_iter)->popValue() == 1) { // screen of population inclusion
+					if ((*ind_iter)->cohort != -999 && ((mincohort != -999 && (*ind_iter)->cohort < mincohort) || (maxcohort != -999 && (*ind_iter)->cohort > maxcohort))) {
+						continue; // skip if not in set year/cohort range
+					}
+					for (std::vector<std::string>::iterator offspring_iter = (*ind_iter)->offspring.begin(); offspring_iter != (*ind_iter)->offspring.end(); ++offspring_iter) {
+						lineage[offgen].push_back(&ped[pedidx[*offspring_iter]]);
+						noffspring++;
+					}
 				}
 			}
 			++gen;
 		}
 
 		// calculate statistics
-		element_idx indlog;
+		seen.clear();
 		double ind_total = 0;
 		gen = 0;
-		std::cout << "## LINEAGE " << ancid << " ##\n";
-		unsigned int rowidx = matidx[ancid];
+		std::stringstream ss;
+		//std::cout << "## LINEAGE " << ancid << " ##\n"; // debug
 		while (lineage[gen].size() > 0) {
 			for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
-				unsigned int colidx = matidx[(*ind_iter)->id()];
-				std::cout << rowidx << " " << colidx << "\n";
-				//std::string elem = matidx[ancid] + "." + matidx[(*ind_iter)->id()];
-				//std::cout << elem << "\n";
+				ss.str(std::string());
+				ss.clear();
+				ss << matidx[ancid];
+				std::string elem(ss.str());
+				ss.str(std::string());
+				ss.clear();
+				ss << matidx[(*ind_iter)->id()];
+				elem += "_" + ss.str();
+				//std::cout << elem << "\n"; // debug
+				if (seen.find(elem) == seen.end()) {
+					// relationship has not been recorded yet, so do so
+					ind_total += rmat[matidx[ancid]][matidx[(*ind_iter)->id()]];
+					seen.insert({elem,1});
+				}
 			}
 			++gen;
 		}
+		ind_stats.push_back(std::make_pair(ancid, ind_total));
+		pop_total += ind_total;
 
 		// draw pedigrees
 		if (draw) {
@@ -493,6 +517,13 @@ int hunterStat (std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outp
 				++gen;
 			}
 		}
+	}
+
+	// output statistics
+	if (pop_total == 0) std::cerr << "warning: Total ancestral contribution is zero\n";
+	outstream << "ID\tNUM_GENOME_COPIES\tGENOME_PROPORTION\n";
+	for (sdpvec::iterator it = ind_stats.begin(); it != ind_stats.end(); ++it) {
+		outstream << it->first << "\t" << it->second << "\t" << it->second/pop_total << "\n";
 	}
 
 	// close output stream
