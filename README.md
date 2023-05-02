@@ -152,9 +152,9 @@ The following describes the output columns for each analysis.
 **--pedstat 1**
 
 .pedstat1<br>
-(1) ID : Ancestor ID.<br>
-(2) N_GENOME_COPIES : Expected number of ancestor genome copies in focal cohort.<>br
-(3) GENOME_PROPORTION : Proportion of the total expected genomic copies from all ancestors in the focal cohort derived from the given ancestor.
+**(1)** ID : Ancestor ID.<br>
+**(2)** N_GENOME_COPIES : Expected number of ancestor genome copies in focal cohort.<br>
+**(3)** GENOME_PROPORTION : Proportion of the total expected genomic copies from all ancestors in the focal cohort derived from the given ancestor.
 
 .topo<br>
 Pedigree representation of each ancestral lineage.
@@ -162,23 +162,23 @@ Pedigree representation of each ancestral lineage.
 **--skewstat 1**
 
 .skewstat1<br>
-(1) ID : Anestor ID.<br>
-(2) S<sub>c</sub> : Joint probability that the ancestor is a relative of a random focal cohort individual and two alleles from this pair are IBD.<br>
-(3) S<sub>rank</sub> : Joint probility that the ancestor is a relative of a random focal cohort individual and their relatedness is higher than for any other ancestor.<br>
-(4) relate_prob : Probability that the ancestor and a focal cohort individual are related above level *--background_r*.<br>
-(5) avg_r : Probability that two alleles drawn from the ancestor and a random focal cohort relative are IBD.<br>
-(6) rank_prob : Probability that the relatedness between the ancestor and a random focal cohort relative is higher than for any other potential ancestor.<br>
+**(1)** ID : Anestor ID.<br>
+**(2)** S<sub>c</sub> : Joint probability that the ancestor is a relative of a random focal cohort individual and two alleles from this pair are IBD.<br>
+**(3)** S<sub>rank</sub> : Joint probility that the ancestor is a relative of a random focal cohort individual and their relatedness is higher than for any other ancestor.<br>
+**(4)** relate_prob : Probability that the ancestor and a focal cohort individual are related above level *--background_r*.<br>
+**(5)** avg_r : Probability that two alleles drawn from the ancestor and a random focal cohort relative are IBD.<br>
+**(6)** rank_prob : Probability that the relatedness between the ancestor and a random focal cohort relative is higher than for any other potential ancestor.<br>
 
 .relatives<br>
-(1) Ancestor ID.<br>
-(2) Comma-delimited list of IDs of focal cohort individuals with relatedness to ancestor above **--background_r**. '*' indicates no relatives.<br>
+**(1)** Ancestor ID.<br>
+**(2)** Comma-delimited list of IDs of focal cohort individuals with relatedness to ancestor above **--background_r**. '*' indicates no relatives.<br>
 
 **--skewstat 2**
 
 .skewstat2<br>
-(1) ID : Ancestor ID.<br>
-(2) S<sub>count</sub> : Proportion of all pairwise {ancestor, focal cohort individual} comparisons for which the relatedness involving the ancestor is higher.<br>
-(3) S<sub>rsub</sub> : Proportion of the total relatedness between ancestors and focal cohort indivivduals from this ancestor.
+**(1)** ID : Ancestor ID.<br>
+**(2)** S<sub>count</sub> : Proportion of all pairwise {ancestor, focal cohort individual} comparisons for which the relatedness involving the ancestor is higher.<br>
+**(3)** S<sub>rsub</sub> : Proportion of the total relatedness between ancestors and focal cohort indivivduals from this ancestor.
 
 __________
 
