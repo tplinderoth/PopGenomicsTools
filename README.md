@@ -6,7 +6,7 @@ PopGenomicsTools
 Contact: Tyler Linderoth, lindero1@msu.edu
 __________________________________________________________________
 
-To compile all programs `cd` in the PopGenomicsTools directory and then type
+To compile all programs `cd` into the PopGenomicsTools directory and then type
 ```
 make
 ```
@@ -64,9 +64,9 @@ Notes:
 
 There are two main types of inputs, a **--ped** pedigree file and/or a **--rmat** relatedness matrix.
 
-**--ped** : This is a tab-delimited ped format file with required columns (1) Individual ID, (2) parent 1 ID, (3) parent 2 ID. A header is assumed and required. The names 
+**--ped** : This is a tab-delimited ped format file with required columns (1) individual ID, (2) parent 1 ID, (3) parent 2 ID. A header is assumed and required. The names 
 for the first three columns can be anything. Additional columns (in any order) can contain 'sex' ('M','male','F','female', and '*' for missing) and 'cohort' which is an integer value,
-e.g. 0, 1, 2, 2003, 2004, 2021. These columns must be named accordingly. A few line example:
+e.g. 0, 1, 2, 2003, 2004, 2021. These columns must be named 'sex' and 'cohort', respectively. A few line example:
 
 ```
 ID      SIRE_ID DAM_ID  SEX     COHORT
@@ -81,7 +81,7 @@ OK-FS   *       *       FEMALE  2004
 ```
 
 **--rmat** : This is a whitespace-delimited, square matrix of pairwise relatedness values. This file must contain a header (as the first row) with the IDs for the 
-individuals represented by the rows/colums. Diagonal entries must be a numeric value, typically 1. An example of small relatedness matrix:
+individuals represented by the rows/colums. Diagonal entries must be a numeric value, typically 1. An example of a small relatedness matrix:
 ```
 APZ-F     PGZ-F     ROZ-F     ORZ-F     OOZ-F
 1         0.079762  2.5e-05   0.019089  0.031298
@@ -92,7 +92,7 @@ APZ-F     PGZ-F     ROZ-F     ORZ-F     OOZ-F
 
 ``` 
 
-**--pop**, **--anc**, **--cohort** : These three arguments are used to restrict analyses to subsets of individuals. Each takes a input a one-column file of individuals IDs,
+**--pop**, **--anc**, **--cohort** : These three arguments are used to restrict analyses to subsets of individuals. Each takes as input a one-column file of individuals IDs,
 where each row is one individual. A few line example:
 ```
 SR-PK
@@ -105,7 +105,7 @@ WK-SB
 K-GSW
 K-RSW
 ```
-Both **--pedstat** and **--skewstat** calculate the genetic represenation of each ancestor in the **--anc** list in a 'focal cohort' (usually a descednant group
+Both **--pedstat** and **--skewstat** calculate the genetic represenation of each ancestor in the **--anc** list in a 'focal cohort' (usually a descendant group
 of individuals) specified in the file passed to **--cohort**. Another list of individuals can be provided with **--pop** to limit analyses only to the individuals 
 in this file.
 
@@ -120,65 +120,67 @@ If focal cohort IDs are not supplied assumes all non-ancestral individuals in re
 
 1 : Calculates genetic skew statistic used in the Mosaic Florida scrub-jay study. For each ancestral individual in **--anc** this quantifies their 
 genetic representation in the focal cohort based on the proportion of individuals that they are related to and the extent to which they are related to these 
-individuals. **Requirements: --rmat, --anc, --out**
+individuals. **Requirements: --rmat, --anc, --out**.
 
 2 : Calculates genetic representation for an ancestor based on the ratio of their relatedness with the focal cohort to the total relatedness between all ancestors and the 
 focal cohort. Also calculates the proportion of pairwise {ancestor, focal cohort individual} comparisons for which the relatedness involving 
 the focal ancestor is higher. If neither **--anc** or **--cohort** are supplied statistics are calculated based on all pairwise comparisons in the relatedness matrix. If 
-only **--anc** is supplied, assumes all other individuals in relatedness matrix are focal cohort individuals. If only **--cohort** is supplied, assumed all other individuals in 
+only **--anc** is supplied, assumes all non-ancestral individuals in relatedness matrix are focal cohort individuals. If only **--cohort** is supplied, assumed all other individuals in 
 relatedness matrix are ancestors. **Requirements: --rmat**.
 
 **--out** : output file name prefix.
 
 Note that multiple analyses can be run in a single call, e.g. `./relateStats --skewstat 1 --skewstat 2 --pedstat 1 ...` is valid.
 
-##### More running options:
+#### More running options
 
 **--mincohort**/**--maxcohort** : These arguments use the 'cohort' column of the ped input to exclude individuals above **--maxcohort** and below **--mincohort** from the focal cohort. In this 
 way the focal cohort can be supplied using a numeric interval instead of through a list of IDs supplied with **--cohort**.
 
-**--background_r** : Pairs of individuals with relatedness above this value are considered relatives. This is used for calculating the probability the a focal cohort individual is a relative 
+**--background_r** : Pairs of individuals with relatedness above this value are considered relatives. This is used for calculating the probability that a focal cohort individual is a relative 
 of an ancestor.
 
-**--min_r** : Sets relatedness values below this level to zero in for --skewstat 2 **S<sub>count</sub>** calculation. This can help reduce noise from very low relatedness values.
+**--min_r** : Sets relatedness values below this level to zero for --skewstat 2 **S<sub>count</sub>** calculation. This can help reduce noise from very low relatedness values.
 
 **--draw** : Specifying this dumps a '.topo' file containing a crude representation of each ancestral lineage pedigree from ancestor down through descedants. This is useful for visualizing 
-the pedigree and identifying lines of descent.
+lines of descent.
 
 #### Output
 
-The following describes the output columns based on analysis.
+The following describes the output columns for each analysis.
 
 **--pedstat 1**
 
-.pedstat1
-(1) ID : Ancestor ID.
-(2) N_GENOME_COPIES : Expected number of ancestor genome copies in focal cohort.
+.pedstat1<br>
+(1) ID : Ancestor ID.<br>
+(2) N_GENOME_COPIES : Expected number of ancestor genome copies in focal cohort.<>br
 (3) GENOME_PROPORTION : Proportion of the total expected genomic copies from all ancestors in the focal cohort derived from the given ancestor.
 
-.topo
+.topo<br>
 Pedigree representation of each ancestral lineage.
 
 **--skewstat 1**
 
-.skewstat1
-(1) ID : Anestor ID.
-(2) S<sub>c</sub> : Joint probability that the ancestor is a relative of a random focal cohort individual and two alleles from this pair are IBD. 
-(3) S<sub>rank</sub> : Joint probility that the ancestor is a relative of a random focal cohort individual and their relatedness is higher than for any other ancestor.
-(4) relate_prob : Probability that the ancestor and a focal cohort individual are related above level *--background_r*.
-(5) avg_r : Probability that two alleles drawn from the ancestor and a random focal cohort relative are IBD.
-(6) rank_prob : Probability that the relatedness between the ancestor and a random focal cohort relative is higher than for any other potential ancestor.  
+.skewstat1<br>
+(1) ID : Anestor ID.<br>
+(2) S<sub>c</sub> : Joint probability that the ancestor is a relative of a random focal cohort individual and two alleles from this pair are IBD.<br>
+(3) S<sub>rank</sub> : Joint probility that the ancestor is a relative of a random focal cohort individual and their relatedness is higher than for any other ancestor.<br>
+(4) relate_prob : Probability that the ancestor and a focal cohort individual are related above level *--background_r*.<br>
+(5) avg_r : Probability that two alleles drawn from the ancestor and a random focal cohort relative are IBD.<br>
+(6) rank_prob : Probability that the relatedness between the ancestor and a random focal cohort relative is higher than for any other potential ancestor.<br>
 
-.relatives
-(1) Ancestor ID.
-(2) Comma-delimited list of IDs of focal cohort individuals with relatedness to ancestor above **--background_r**. '*' indicates no relatives.
+.relatives<br>
+(1) Ancestor ID.<br>
+(2) Comma-delimited list of IDs of focal cohort individuals with relatedness to ancestor above **--background_r**. '*' indicates no relatives.<br>
 
 **--skewstat 2**
 
-.skewstat2
-(1) ID : Ancestor ID.
-(2) S<sub>count</sub> : Proportion of all pairwise {ancestor, focal cohort individual} comparisons for which the relatedness involving the ancestor is higher.
+.skewstat2<br>
+(1) ID : Ancestor ID.<br>
+(2) S<sub>count</sub> : Proportion of all pairwise {ancestor, focal cohort individual} comparisons for which the relatedness involving the ancestor is higher.<br>
 (3) S<sub>rsub</sub> : Proportion of the total relatedness between ancestors and focal cohort indivivduals from this ancestor.
+
+__________
 
 ### betaAFOutlier.R
 
@@ -202,6 +204,8 @@ Optional Input
 --plotqq: Generate qq-plot of p-values
 --seed <INT>: Set a specific seed
 ```
+
+__________
 
 ### selkit
 
@@ -232,6 +236,7 @@ Arguments:
 HKA statistic calculated by comparing all ingroup individuals to all outgroup individuals.
 If supplying precalculated probabilities -ps and -pd must sum to 1.
 ```
+__________
 
 ### dxyWindow
 
@@ -269,6 +274,7 @@ Output:
 (5) number sites in MAF input that were analyzed
 (6) number of sites in MAF input that were skipped due to too few individuals
 ```
+__________
 
 ### fstWindow
 
@@ -292,6 +298,7 @@ Output:
 (5) Fst
 (6) Number sites in window
 ```
+__________
 
 ### hetWindow
 
@@ -315,6 +322,7 @@ Output:
 (5) heterozygosity
 (6) Number sites in window
 ```
+__________
 
 ### ihsWindow
 
@@ -342,6 +350,7 @@ Output:
 (6) proportion |iHS| > cutoff
 (7) Number SNPs in window
 ```
+__________
 
 ### xpehhWindow
 
@@ -371,8 +380,9 @@ Output:
 (6) proportion XPEHH scores > or < cutoff
 (7) Number SNPs in window
 ```
+__________
 
 ### Other code
 
-*pafAlleles : Used for genomic assembly liftover
-*ngsMisc.pl : Toolkit for processing and manipulating NGS data
+* pafAlleles : Used for genomic assembly liftover
+* ngsMisc.pl : Toolkit for processing and manipulating NGS data
