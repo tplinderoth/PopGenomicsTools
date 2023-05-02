@@ -149,7 +149,7 @@ void helpinfo(const double c, const double min_r) {
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Mosaic FSJ skew statistic\n"
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "2: Matrix proportion\n\n"
 	<< std::setw(w1) << std::left << "--out" << std::setw(w2) << std::left << "<STRING> Output name prefix\n"
-	<< std::setw(w1) << std::left << "--ped" << std::setw(w2) << std::left << "<FILE> ped-format file\n"
+	<< std::setw(w1) << std::left << "--ped" << std::setw(w2) << std::left << "<FILE> ped format file\n"
         << std::setw(w1) << std::left << "--rmat" << std::setw(w2) << std::left << "<FILE> Relatedness matrix\n"
 	<< std::setw(w1) << std::left << "--pop" << std::setw(w2) << std::left << "<FILE> List of individual IDs to keep for analyses\n"
 	<< std::setw(w1) << std::left << "--anc" << std::setw(w2) << std::left << "<FILE> List of ancestor IDs\n"
