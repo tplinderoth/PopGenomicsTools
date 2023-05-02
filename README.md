@@ -154,7 +154,7 @@ The following describes the output columns for each analysis.
 .pedstat1<br>
 **(1) ID** : Ancestor ID.<br>
 **(2) N_GENOME_COPIES** : Expected number of ancestor genome copies in focal cohort.<br>
-**(3) GENOME_PROPORTION** : Proportion of the total expected genomic copies from all ancestors in the focal cohort derived from the given ancestor.
+**(3) GENOME_PROPORTION** : Proportion of the total expected genomic copies from all ancestors in the focal cohort from the given ancestor.
 
 .topo<br>
 Pedigree representation of each ancestral lineage.
@@ -162,10 +162,10 @@ Pedigree representation of each ancestral lineage.
 **--skewstat 1**
 
 .skewstat1<br>
-**(1) ID** : Anestor ID.<br>
+**(1) ID** : Ancestor ID.<br>
 **(2) S<sub>c</sub>** : Joint probability that the ancestor is a relative of a random focal cohort individual and two alleles from this pair are IBD.<br>
 **(3) S<sub>rank</sub>** : Joint probility that the ancestor is a relative of a random focal cohort individual and their relatedness is higher than for any other ancestor.<br>
-**(4) relate_prob** : Probability that the ancestor and a focal cohort individual are related above level *--background_r*.<br>
+**(4) relate_prob** : Probability that the ancestor and a focal cohort individual are related above level **--background_r**.<br>
 **(5) avg_r** : Probability that two alleles drawn from the ancestor and a random focal cohort relative are IBD.<br>
 **(6) rank_prob** : Probability that the relatedness between the ancestor and a random focal cohort relative is higher than for any other potential ancestor.<br>
 
