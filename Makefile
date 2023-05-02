@@ -1,6 +1,6 @@
 CXX = g++
 CXXFLAGS = -O3 -Wall
-BIN = fstWindow hetWindow ihsWindow xpehhWindow dxyWindow pafAlleles selkit
+BIN = fstWindow hetWindow ihsWindow xpehhWindow dxyWindow pafAlleles selkit relateStats
 
 all: $(BIN)
 
@@ -18,6 +18,8 @@ pafAlleles: pafAlleles.cpp
 	$(CXX) $(CXXFLAGS) pafAlleles.cpp -o pafAlleles
 selkit: selkit.cpp
 	$(CXX) $(CXXFLAGS) selkit.cpp StatDist.cpp -o selkit
+relateStats: relateStats.cpp
+	$(CXX) $(CXXFLAGS) relateStats.cpp -o relateStats
 
 clean:
 	rm -f $(BIN) *.o *.d
