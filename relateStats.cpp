@@ -562,20 +562,24 @@ int hunterStat (std::vector<indiv> &ped, std::unordered_map<std::string, unsigne
 	return rv;
 }
 
-void relateProb (double* p_relate, std::vector<std::string>* relatives, double c, size_t cohort_n, const std::vector<std::string>* anc, unsigned int* popidx,
+void relateProb (double* p_relate, double* avg_r, std::vector<std::string>* relatives, double c, size_t cohort_n, const std::vector<std::string>* anc, unsigned int* popidx,
    Matrix<double> &rmat, std::unordered_map<std::string, unsigned int> &matidx, const std::vector<std::string> &matids) {
 	// probability that a given ancestor will be related (above level c) to a randomly sampled cohort individual
 	unsigned int i = 0;
 	for (std::vector<std::string>::const_iterator anciter = anc->begin(); anciter != anc->end(); ++anciter) {
 		size_t n_related = 0;
 		relatives[i].reserve(cohort_n);
+		double r_sum = 0;
 		for (unsigned int j=0; j<cohort_n; ++j) {
-			if (rmat[matidx[*anciter]][popidx[j]] >= c) {
+			double r = rmat[matidx[*anciter]][popidx[j]];
+			if (r >= c) {
 				++n_related;
+				r_sum += r;
 				relatives[i].push_back(matids[popidx[j]]);
 			}
 		}
 		p_relate[i] = static_cast<double>(n_related)/cohort_n;
+		avg_r[i] = n_related > 0 ? r_sum/n_related : 0;
 		++i;
 	}
 }
@@ -661,8 +665,9 @@ int mosaicStat (Matrix<double> &rmat, std::unordered_map<std::string, unsigned i
 
 	// probability that a given ancestor will be related (above level c) to a randomly sampled cohort individual;
 	double p_relate [anc->size()];
+	double avg_r [anc->size()];
 	std::vector<std::string> relatives[anc->size()];
-	relateProb(p_relate, relatives, c, cohort_n, anc, popidx, rmat, matidx, matids);
+	relateProb(p_relate, avg_r, relatives, c, cohort_n, anc, popidx, rmat, matidx, matids);
 
 	// probability that a given ancestor will be more related to a randomly sampled cohort individual than any other
 	// potential ancestors.
@@ -670,11 +675,12 @@ int mosaicStat (Matrix<double> &rmat, std::unordered_map<std::string, unsigned i
 	rankProb (p_rank, anc, cohort_n, c, popidx, rmat, matidx);
 
 	// Write results
-	stat_outstream << "ID\tSc\trelate_prob\trank_prob\n";
+	stat_outstream << "ID\tSc\tSrank\trelate_prob\tavg_r\trank_prob\n";
 	relative_outstream << "ID\trelatives\n";
 	for (i=0; i<anc->size(); ++i) {
-		double sc = p_relate[i]*p_rank[i];
-		stat_outstream << (*anc)[i] << "\t" << sc << "\t" << p_relate[i] << "\t" << p_rank[i] << "\n";
+		double sc = p_relate[i]*avg_r[i];
+		double srank = p_relate[i]*p_rank[i];
+		stat_outstream << (*anc)[i] << "\t" << sc << "\t" << srank << "\t" << p_relate[i] << "\t" << avg_r[i] << "\t" << p_rank[i] << "\n";
 		relative_outstream << (*anc)[i] << "\t";
 		if (relatives[i].empty()) {
 			relative_outstream << "*\n";
@@ -708,32 +714,39 @@ int findMatIndex (unsigned int* idx, vecmap &matidx, const std::vector<std::stri
 }
 
 void matrixCounts (std::vector<double>* count_p, std::vector<double>* rp, const unsigned int* ancidx, const size_t anc_n, const unsigned int* cohortidx, const size_t cohort_n,
-   Matrix<double> &rmat, const double min_r) {
+   Matrix<double> &rmat, const double min_r, size_t* count_total = NULL, double* r_total = NULL) {
 
 	// for each ancestor count the number of other ancestors with lower relatedness to each cohort individual
 	count_p->clear();
 	rp->clear();
-	double total_r = 0;
-	unsigned int total_counts = 0;
-	unsigned int i = 0;
+	unsigned int i = 0, j = 0;
 	for (i=0; i<anc_n; ++i) {
 		count_p->push_back(0);
 		rp->push_back(0);
-		for (unsigned int j=0; j<cohort_n; ++j) {
+		for (j=0; j<cohort_n; ++j) {
 			double r = rmat[ancidx[i]][cohortidx[j]];
+			(*rp)[i] += r;
 			if (r < min_r) r = 0;
 			for (unsigned int k=0; k<anc_n; ++k) {
 				if (k == i) continue;
-				double rab = rmat[ancidx[k]][cohortidx[j]];
-				if (rab < r) ++(*count_p)[i];
-				++total_counts;
-				(*rp)[i] += rab;
+				if (rmat[ancidx[k]][cohortidx[j]] < r) ++(*count_p)[i];
 			}
 		}
-		total_r += (*rp)[i];
 		//std::cout << (*count_p)[i] << "\t" << total_counts << "\t" << (*rp)[i] << "\t" << total_r << "\n";
 	}
 
+	// calculate normalizations
+	unsigned int total_counts = (anc_n * cohort_n) - cohort_n; // this is all pairwise comparisons minus those between the focal ancestor and cohort
+	double total_r = 0;
+	for (i=0; i<anc_n; ++i) {
+		for(j=0; j<cohort_n; ++j) {
+			total_r += rmat[ancidx[i]][cohortidx[j]];
+		}
+	}
+	if (count_total) *count_total = total_counts;
+	if (r_total) *r_total = total_r;
+
+	// calculate proportions
 	i = 0;
 	for (std::vector<double>::iterator it = count_p->begin(); it != count_p->end(); ++it) {
 		*it /= total_counts;
@@ -809,13 +822,17 @@ int matPstat (Matrix<double> &rmat, std::unordered_map<std::string, unsigned int
 	std::vector<double> rp;
 	rp.reserve(anc->size());
 
-	matrixCounts (&count_p, &rp, ancidx, anc_n, cohortidx, cohort_n, rmat, min_r);
+	size_t total_counts = 0;
+	double r_total = 0;
+
+	matrixCounts (&count_p, &rp, ancidx, anc_n, cohortidx, cohort_n, rmat, min_r, &total_counts, &r_total);
+	std::cerr << "Total pairwise counts: " << total_counts << "\n" << "Total r: " << r_total << "\n";
 
 	// write output
 	outs << "ID\tScount\tSrsum\n";
 	unsigned int i = 0;
 	for (std::vector<double>::const_iterator it = count_p.begin(); it != count_p.end(); ++it) {
-		outs << (*anc)[i] << "\t" << -log(*it) << "\t" << -log(rp[i]) << "\n";
+		outs << (*anc)[i] << "\t" << *it << "\t" << rp[i] << "\n";
 		++i;
 	}
 
