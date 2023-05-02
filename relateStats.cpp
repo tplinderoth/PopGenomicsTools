@@ -136,7 +136,7 @@ template<typename T> Array<T>::~Array () {
 
 // define functions
 
-void helpinfo(double c) {
+void helpinfo(const double c, const double min_r) {
 	int w1 = 16;
 	int w2 = 8;
 	int w3 = 2;
@@ -146,7 +146,8 @@ void helpinfo(double c) {
 	<< std::setw(w1) << std::left << "--pedstat" << std::setw(w2) << std::left << "<INT> Pedigree-based statistics\n"
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Expected genetic contribution from Hunter etal 2019 (requires --anc)\n\n"
 	<< std::setw(w1) << std::left << "--skewstat" << std::setw(2) << std::left << "<INT> Genetic skew statistics\n"
-	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Mosaic FSJ skew statistic\n\n"
+	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Mosaic FSJ skew statistic\n"
+	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "2: Matrix proportion\n\n"
 	<< std::setw(w1) << std::left << "--out" << std::setw(w2) << std::left << "<STRING> Output name prefix\n"
 	<< std::setw(w1) << std::left << "--ped" << std::setw(w2) << std::left << "<FILE> ped-format file\n"
         << std::setw(w1) << std::left << "--rmat" << std::setw(w2) << std::left << "<FILE> Relatedness matrix\n"
@@ -156,23 +157,24 @@ void helpinfo(double c) {
 	<< std::setw(w1) << std::left << "--mincohort" << std::setw(w2) << std::left << "<INT> Exclude indviduals with cohort value below INT\n"
 	<< std::setw(w1) << std::left << "--maxcohort" << std::setw(w2) << std::left << "<INT> Exclude individuals with cohort value above INT\n"
 	<< std::setw(w1) << std::left << "--draw" << std::setw(w2) << std::left << "Output direct descendent pedigrees\n"
-	<< std::setw(w1) << std::left << "--background_r" << std::setw(w2) << std::left << "Background relatedness [" << c << "]\n"
+	<< std::setw(w1) << std::left << "--background_r" << std::setw(w2) << std::left << "<FLOAT> Background relatedness for Mosaic stat [" << c << "]\n"
+	<< std::setw(w1) << std::left << "--min_r" << std::setw(w2) << std::left << "<FLOAT> Consider r values < FLOAT 0 for matrix proportion stat [" << min_r << "]\n"
 
 	<< "\nPedigree statistics:\n"
 	<< "--pedstat --out --ped --rmat --anc [--pop] [--cohort] [--mincohort] [--maxcohort] [--draw]\n"
 	<< "\nSkew statistics:\n"
-	<< "--skewstat --out --rmat --anc [--cohort] [--background_r]"
+	<< "--skewstat --out --rmat --anc [--cohort] [--background_r] [--min_r]"
 
 	<< "\n\nNotes:\n"
 	<<"* Assumes first row of relatdness matrix contains individual IDs\n\n";
 }
 
 int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix, std::vector <int> &pedstat, std::vector <int> &skewstat, std::ifstream &anc_is,
-	std::ifstream &pop_is, int &mincohort, int &maxcohort, int &draw, std::ifstream &cohort_is, double &background_r) {
+	std::ifstream &pop_is, int &mincohort, int &maxcohort, int &draw, std::ifstream &cohort_is, double &background_r, double &min_r) {
 	int rv = 0;
 	int argpos = 1;
 	if (argc < 2 || strcmp(argv[argpos], "-h") == 0 || strcmp(argv[argpos],"--help") == 0) {
-		helpinfo(background_r);
+		helpinfo(background_r, min_r);
 		return 1;
 	}
 
@@ -202,8 +204,9 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 			pedstat.push_back(s);
 		} else if (strcmp(argv[argpos],"--skewstat") == 0) {
 			int s = atoi(argv[argpos+1]);
-			if (s > 1) { // change if adding more skew stat options
-				std::cerr << "Invalid --skewStat option " << s << "\n";
+			if (s == 1 || s == 2) { // change if adding more skew stat options
+			} else {
+				std::cerr << "Invalid --skewstat option " << s << "\n";
 				return -1;
 			}
 			skewstat.push_back(s);
@@ -239,6 +242,12 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 			background_r = std::stod(argv[argpos+1]);
 			if (background_r < 0 || background_r > 1) {
 				std::cerr << "background_r out of range (0,1)\n";
+				return -1;
+			}
+		} else if (strcmp(argv[argpos],"--min_r") == 0) {
+			min_r = std::stod(argv[argpos+1]);
+			if (min_r < 0 || min_r > 1) {
+				std::cerr << "min_r out of range (0,1)\n";
 				return -1;
 			}
 		} else {
@@ -639,7 +648,7 @@ int mosaicStat (Matrix<double> &rmat, std::unordered_map<std::string, unsigned i
 	cohort_n = i;
 	if (cohort->size() < 1) std::cerr << "Treating all non-ancestral individuals as focal cohort for Mosaic stat calculation\n";
 	std::cerr << "focal cohort size: " << cohort_n << "\n" << "Number ancestors: " << anc->size() << "\n";
-	std::cerr << "Background relatedness set to r=" << c << "\n";
+	std::cerr << "Background relatedness set to " << c << "\n";
 
 	// check that focal IDs were parsed correctly (debug)
 	/*
@@ -685,6 +694,137 @@ int mosaicStat (Matrix<double> &rmat, std::unordered_map<std::string, unsigned i
 	return rv;
 }
 
+int findMatIndex (unsigned int* idx, vecmap &matidx, const std::vector<std::string>* ids) {
+	unsigned int i = 0;
+	for(std::vector<std::string>::const_iterator it = ids->begin(); it != ids->end(); ++it) {
+		if (matidx.find(*it) == matidx.end()) {
+			std::cerr << "error: " << *it << " not in r matrix\n";
+			return -1;
+		}
+		idx[i] = matidx[*it];
+		++i;
+	}
+	return i;
+}
+
+void matrixCounts (std::vector<double>* count_p, std::vector<double>* rp, const unsigned int* ancidx, const size_t anc_n, const unsigned int* cohortidx, const size_t cohort_n,
+   Matrix<double> &rmat, const double min_r) {
+
+	// for each ancestor count the number of other ancestors with lower relatedness to each cohort individual
+	count_p->clear();
+	rp->clear();
+	double total_r = 0;
+	unsigned int total_counts = 0;
+	unsigned int i = 0;
+	for (i=0; i<anc_n; ++i) {
+		count_p->push_back(0);
+		rp->push_back(0);
+		for (unsigned int j=0; j<cohort_n; ++j) {
+			double r = rmat[ancidx[i]][cohortidx[j]];
+			if (r < min_r) r = 0;
+			for (unsigned int k=0; k<anc_n; ++k) {
+				if (k == i) continue;
+				double rab = rmat[ancidx[k]][cohortidx[j]];
+				if (rab < r) ++(*count_p)[i];
+				++total_counts;
+				(*rp)[i] += rab;
+			}
+		}
+		total_r += (*rp)[i];
+		//std::cout << (*count_p)[i] << "\t" << total_counts << "\t" << (*rp)[i] << "\t" << total_r << "\n";
+	}
+
+	i = 0;
+	for (std::vector<double>::iterator it = count_p->begin(); it != count_p->end(); ++it) {
+		*it /= total_counts;
+		(*rp)[i] /= total_r;
+		//std::cout << *it << "\t" << (*rp)[i] << "\n";
+		++i;
+	}
+}
+
+int matPstat (Matrix<double> &rmat, std::unordered_map<std::string, unsigned int> &matidx, const std::vector<std::string> &matids, const std::string &outprefix,
+   const std::vector<std::string> *anc, const std::vector<std::string>* cohort, const double min_r) {
+
+	int rv = 0;
+
+	// open output streams
+	std::ofstream outs((outprefix + ".skewstat2").c_str(), std::ios_base::out);
+
+	// find group indices in relatedness matrix
+
+	// * if neither ancestral or cohort IDs are provided calculate stat for all individuals in matrix using all pairwise r
+	// * if ancestral IDs are not provided, but cohort IDs are, ancestral IDs set to all non-cohort individuals in matrix
+	// * if only ancestral IDs are provided cohort individuals will be set to all non-ancestral individuals in matrix
+
+	if (anc->empty() && cohort->empty()) {
+		cohort = &matids;
+		anc = &matids;
+	}
+
+	std::vector<std::string> compliment;
+	if (!anc->empty() && cohort->empty()) {
+		compliment.reserve(rmat.coln()-anc->size());
+		for (std::vector<std::string>::const_iterator it = matids.begin(); it != matids.end(); ++it) {
+			if (std::find(anc->begin(), anc->end(), *it) == anc->end()) {
+				compliment.push_back(*it);
+			}
+		}
+		cohort = &compliment;
+	} else if (anc->empty() && !cohort->empty()) {
+ 		compliment.reserve(rmat.coln()-cohort->size());
+		for (std::vector<std::string>::const_iterator it = matids.begin(); it != matids.end(); ++it) {
+			if (std::find(cohort->begin(), cohort->end(), *it) == cohort->end()) {
+				compliment.push_back(*it);
+			}
+		}
+                anc = &compliment;
+	}
+
+
+	unsigned int ancidx [rmat.coln()];
+	int anc_n = findMatIndex(ancidx, matidx, anc);
+
+	unsigned int cohortidx [rmat.coln()];
+	int cohort_n = findMatIndex(cohortidx, matidx, cohort);
+
+	if (anc_n < 0 || cohort_n < 0) return -1;
+
+	std::cerr << "ancestral n: " << anc_n << "\ncohort n: " << cohort_n << "\n";
+
+/*
+	std::cout << "ANCESTRAL IDs\n";
+	for (unsigned int i=0; i<anc_n; ++i) {
+		std::cout << matids[ancidx[i]] << "\n";
+	}
+	std::cout << "COHORT IDs\n";
+	for (unsigned int i=0; i<cohort_n; ++i) {
+		std::cout << matids[cohortidx[i]] << "\n";
+	}
+*/
+
+	// calculate statistics
+	std::vector<double> count_p;
+	count_p.reserve(anc->size());
+	std::vector<double> rp;
+	rp.reserve(anc->size());
+
+	matrixCounts (&count_p, &rp, ancidx, anc_n, cohortidx, cohort_n, rmat, min_r);
+
+	// write output
+	outs << "ID\tScount\tSrsum\n";
+	unsigned int i = 0;
+	for (std::vector<double>::const_iterator it = count_p.begin(); it != count_p.end(); ++it) {
+		outs << (*anc)[i] << "\t" << -log(*it) << "\t" << -log(rp[i]) << "\n";
+		++i;
+	}
+
+	if (outs.is_open()) outs.close();
+
+	return rv;
+
+}
+
 int main (int argc, char** argv) {
 	int rv = 0;
 
@@ -699,9 +839,10 @@ int main (int argc, char** argv) {
 	int maxcohort = -999, mincohort = -999;
 	int draw = 0; // draw direct descendent pedigree if 1
 	double background_r = 0.0; // background relatedness level used for Mosaic statistic
+	double min_r = 0.0; // minimum r value, currently not used
 
 	// parse arguments
-	if ((rv = parseArgs(argc, argv, ped_is, rmat_is, outprefix, pedstat, skewstat, anc_is, pop_is, mincohort, maxcohort, draw, cohort_is, background_r))) {
+	if ((rv = parseArgs(argc, argv, ped_is, rmat_is, outprefix, pedstat, skewstat, anc_is, pop_is, mincohort, maxcohort, draw, cohort_is, background_r, min_r))) {
 		if (rv == 1) rv = 0;
 		return rv;
 	}
@@ -763,6 +904,10 @@ int main (int argc, char** argv) {
 		if (*iter == 1) {
 			std::cerr << "Calculating Mosaic skew statistic\n";
 			if ((rv = mosaicStat(rmat, matidx, matids, outprefix, &anc, &cohort, background_r))) return rv;
+		}
+		if (*iter == 2) {
+			std::cerr << "Calculating matrix proportion skew statistic\n";
+			if ((rv = matPstat (rmat, matidx, matids, outprefix, &anc, &cohort, min_r))) return rv;
 		}
 	}
 
