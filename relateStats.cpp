@@ -147,7 +147,8 @@ void helpinfo(const double c, const double min_r) {
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Expected genetic contribution from Hunter etal 2019 (requires --anc)\n\n"
 	<< std::setw(w1) << std::left << "--skewstat" << std::setw(2) << std::left << "<INT> Genetic skew statistics\n"
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Mosaic FSJ skew statistic\n"
-	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "2: Matrix proportion\n\n"
+	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "2: Matrix proportion\n"
+	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "3: Average rank-weighted relatedness\n\n"
 	<< std::setw(w1) << std::left << "--out" << std::setw(w2) << std::left << "<STRING> Output name prefix\n"
 	<< std::setw(w1) << std::left << "--ped" << std::setw(w2) << std::left << "<FILE> ped format file\n"
         << std::setw(w1) << std::left << "--rmat" << std::setw(w2) << std::left << "<FILE> Relatedness matrix\n"
@@ -157,7 +158,7 @@ void helpinfo(const double c, const double min_r) {
 	<< std::setw(w1) << std::left << "--mincohort" << std::setw(w2) << std::left << "<INT> Exclude indviduals with cohort value below INT\n"
 	<< std::setw(w1) << std::left << "--maxcohort" << std::setw(w2) << std::left << "<INT> Exclude individuals with cohort value above INT\n"
 	<< std::setw(w1) << std::left << "--draw" << std::setw(w2) << std::left << "Output direct descendent pedigrees\n"
-	<< std::setw(w1) << std::left << "--background_r" << std::setw(w2) << std::left << "<FLOAT> Background relatedness for Mosaic stat [" << c << "]\n"
+	<< std::setw(w1) << std::left << "--background_r" << std::setw(w2) << std::left << "<FLOAT> Background relatedness for skewstat 1 and 2 [" << c << "]\n"
 	<< std::setw(w1) << std::left << "--min_r" << std::setw(w2) << std::left << "<FLOAT> Consider r values < FLOAT 0 for matrix proportion stat [" << min_r << "]\n"
 
 	<< "\nPedigree statistics:\n"
@@ -204,7 +205,7 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 			pedstat.push_back(s);
 		} else if (strcmp(argv[argpos],"--skewstat") == 0) {
 			int s = atoi(argv[argpos+1]);
-			if (s == 1 || s == 2) { // change if adding more skew stat options
+			if (s == 1 || s == 2 || s == 3) { // change if adding more skew stat options
 			} else {
 				std::cerr << "Invalid --skewstat option " << s << "\n";
 				return -1;
@@ -401,6 +402,20 @@ int readrMat (std::ifstream &rmat_is, std::unordered_map<std::string, unsigned i
 
 	return 0;
 }
+
+int findMatIndex (unsigned int* idx, vecmap &matidx, const std::vector<std::string>* ids) {
+	unsigned int i = 0;
+	for(std::vector<std::string>::const_iterator it = ids->begin(); it != ids->end(); ++it) {
+		if (matidx.find(*it) == matidx.end()) {
+			std::string err("error :" + *it + " not in r matrix\n");
+			throw err;
+		}
+		idx[i] = matidx[*it];
+		++i;
+	}
+	return i;
+}
+
 
 int hunterStat (std::vector<indiv> &ped, std::unordered_map<std::string, unsigned int> &pedidx, Matrix<double> &rmat,
    std::unordered_map<std::string, unsigned int> &matidx, std::vector<std::string> &matids, std::string &outprefix, std::vector<std::string>* pop,
@@ -619,6 +634,127 @@ void rankProb (double* p_rank, const std::vector<std::string>* anc, size_t cohor
 	}
 }
 
+bool pairDescendSort(const std::pair<std::string, double> &p1, const std::pair<std::string, double> &p2) {
+	return (p1.second > p2.second);
+}
+
+void sortedMatrix (std::vector<sdpvec>& rank_vec, const std::vector<std::string>* anc, const std::vector<std::string>* cohort, Matrix<double> &rmat, vecmap& matidx) {
+	if (!rank_vec.empty()) rank_vec.clear();
+	rank_vec.resize(cohort->size());
+
+	// ancestor and cohort indices in relatedness matrix
+	unsigned int anc_idx [anc->size()];
+	unsigned int cohort_idx [cohort->size()];
+	try {
+		findMatIndex(anc_idx, matidx, anc);
+		findMatIndex(cohort_idx, matidx, cohort);
+	} catch (const std::string &ex) {
+		throw;
+	}
+
+	for (unsigned int i = 0; i<rank_vec.size(); ++i) {
+		(rank_vec[i]).reserve(anc->size());
+		unsigned int j = 0;
+		for (const std::string& ancid : *anc) {
+			rank_vec[i].push_back(std::make_pair(ancid, rmat[cohort_idx[i]][anc_idx[j]]));
+			++j;
+		}
+		// sort ancestors based on ascending r
+		std::sort(rank_vec[i].begin(), rank_vec[i].end(), pairDescendSort);
+
+		// debug print
+		//std::cout << (*cohort)[i] << "\n";
+		//for (sdpvec::iterator it = rank_vec[i].begin(); it != rank_vec[i].end(); ++it) {
+		//	std::cout << it->first << ":" << it->second;
+		//	if (it == rank_vec[i].end()-1) {
+		//		std::cout << "\n";
+		//	} else {
+		//		std::cout << " ";
+		//	}
+		//}
+	}
+}
+
+int rankWtRelate (Matrix<double> &rmat, std::unordered_map<std::string, unsigned int> &matidx, const std::vector<std::string> &matids, const std::string &outprefix,
+   const std::vector<std::string> *anc, const std::vector<std::string>* cohort, const double c) {
+	// want to compute stat: 1/ncohort * sum_i_ncohort(1/rank_i*r_i)
+	int rv = 0;
+
+	if (anc->empty()) {
+		std::cerr << "error: Mosaic stat 2 requires passing ancestral IDs with --anc\n";
+		return -1;
+	}
+
+	// open output stream
+	std::ofstream stat_outstream((outprefix + ".skewstat3").c_str(), std::ios_base::out);
+
+	// if no cohort IDs, se them to compliment of ancestors in relatedness matrix
+	const std::vector<std::string>* cohort_ptr = cohort;
+	std::vector<std::string> cohort_local;
+	if (cohort_ptr->empty()) {
+		std::cerr << "Treating all non-ancestral individuals in relatedness matrix as the focal cohort\n";
+		cohort_local.reserve(rmat.rown()-anc->size());
+		for (const std::string& id : matids) {
+			if (std::find(anc->begin(), anc->end(), id) == anc->end()) cohort_local.push_back(id);
+		}
+		cohort_ptr = &cohort_local;
+	}
+	std::cerr << "Focal cohort size: " << cohort_ptr->size() << "\n";
+
+	// for each individual in focal cohort rank ancestors according to relatedness
+	std::vector<sdpvec> anc_rank;
+	try {
+		sortedMatrix(anc_rank, anc, cohort_ptr, rmat, matidx);
+	} catch (const std::string & ex) {
+		return -1;
+	}
+
+	// index array position by ancestor name
+	std::unordered_map<std::string, unsigned int> arridx;
+	arridx.reserve(anc->size());
+	for (unsigned int idx = 0; idx < anc->size(); ++idx) {
+		arridx[(*anc)[idx]] = idx;
+	}
+
+	// calculate skew statistic
+	double skew [anc->size()] = {0};
+	unsigned int k = 0;
+	for (const sdpvec &cohortind : anc_rank) {
+		//std::cout << (*cohort)[k] << ", " << cohortind.size() << "\n"; // debug
+		unsigned int i = 1;
+		for (const std::pair<std::string, double> &ancind : cohortind) {
+			// Find probability of sampling a random ancestor with lower relatedness to cohort individual than the focal ancestor
+			double r = ancind.second < c ? 0 : ancind.second;
+			size_t nlower = 0;
+			for (sdpvec::const_iterator it = cohortind.begin()+i; it != cohortind.end(); ++it) {
+				if (it->second < r) ++nlower;
+			}
+			//std::cout << ancind.first << "\t" << ancind.second << "\t" << nlower << "\n"; // debug
+			// add prob_more_related x prob_IBD to ancestor array
+			skew[arridx[ancind.first]] += nlower*r;
+			++i;
+		}
+		//++k;
+	}
+
+	size_t lowerd = anc->size()-1;
+	for (k = 0; k < anc->size(); ++k) {
+		skew[k] /= (lowerd*cohort->size()); // converts counts of individuals with lower relatedness into probability and takes average over cohort
+	}
+
+	// print skew statistic
+	stat_outstream << "ID\tSwtr\n";
+	k = 0;
+	for (const std::string &ancid : *anc) {
+		stat_outstream << ancid << "\t" << skew[k] << "\n";
+		++k;
+	}
+
+	if (stat_outstream.is_open()) stat_outstream.close();
+
+	return rv;
+}
+
 int mosaicStat (Matrix<double> &rmat, std::unordered_map<std::string, unsigned int> &matidx, const std::vector<std::string> &matids, const std::string &outprefix,
    const std::vector<std::string> *anc, const std::vector<std::string>* cohort, const double c) {
 	/*
@@ -629,7 +765,7 @@ int mosaicStat (Matrix<double> &rmat, std::unordered_map<std::string, unsigned i
 	int rv = 0;
 
 	if (anc->size() < 1) {
-		std::cerr << "Mosaic stat requires passing ancestral individuals with --anc\n";
+		std::cerr << "error: Mosaic stat requires passing ancestral individuals with --anc\n";
 		return -1;
 	}
 
@@ -698,19 +834,6 @@ int mosaicStat (Matrix<double> &rmat, std::unordered_map<std::string, unsigned i
 	if (relative_outstream.is_open()) relative_outstream.close();
 
 	return rv;
-}
-
-int findMatIndex (unsigned int* idx, vecmap &matidx, const std::vector<std::string>* ids) {
-	unsigned int i = 0;
-	for(std::vector<std::string>::const_iterator it = ids->begin(); it != ids->end(); ++it) {
-		if (matidx.find(*it) == matidx.end()) {
-			std::cerr << "error: " << *it << " not in r matrix\n";
-			return -1;
-		}
-		idx[i] = matidx[*it];
-		++i;
-	}
-	return i;
 }
 
 void matrixCounts (std::vector<double>* count_p, std::vector<double>* rp, const unsigned int* ancidx, const size_t anc_n, const unsigned int* cohortidx, const size_t cohort_n,
@@ -794,14 +917,15 @@ int matPstat (Matrix<double> &rmat, std::unordered_map<std::string, unsigned int
                 anc = &compliment;
 	}
 
-
 	unsigned int ancidx [rmat.coln()];
-	int anc_n = findMatIndex(ancidx, matidx, anc);
-
 	unsigned int cohortidx [rmat.coln()];
-	int cohort_n = findMatIndex(cohortidx, matidx, cohort);
-
-	if (anc_n < 0 || cohort_n < 0) return -1;
+	int anc_n = 0, cohort_n = 0;
+	try {
+		anc_n = findMatIndex(ancidx, matidx, anc);
+		cohort_n = findMatIndex(cohortidx, matidx, cohort);
+	} catch (const std::string &ex) {
+		return -1;
+	}
 
 	std::cerr << "ancestral n: " << anc_n << "\ncohort n: " << cohort_n << "\n";
 
@@ -925,6 +1049,10 @@ int main (int argc, char** argv) {
 		if (*iter == 2) {
 			std::cerr << "Calculating matrix proportion skew statistic\n";
 			if ((rv = matPstat (rmat, matidx, matids, outprefix, &anc, &cohort, min_r))) return rv;
+		}
+		if (*iter == 3) {
+			std::cerr << "Calculating average rank-weighted relatedness\n";
+			if ((rv = rankWtRelate(rmat, matidx, matids, outprefix, &anc, &cohort, background_r))) return rv;
 		}
 	}
 
