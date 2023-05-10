@@ -144,7 +144,7 @@ void helpinfo(const double c, const double min_r) {
 	std::cout << "\nrelateStats <input>\n"
 	<< "\nPossible Inputs:\n"
 	<< std::setw(w1) << std::left << "--pedstat" << std::setw(w2) << std::left << "<INT> Pedigree-based statistics\n"
-	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Expected genetic contribution from Hunter etal 2019 (requires --anc)\n\n"
+	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Expected genetic contribution from Hunter etal 2019\n\n"
 	<< std::setw(w1) << std::left << "--skewstat" << std::setw(2) << std::left << "<INT> Genetic skew statistics\n"
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "1: Ranked relatedness among relatives\n"
 	<< std::setw(w3) << std::left << "" << std::setw(w2) << std::left << "2: Relatedness matrix proportion\n"
@@ -167,7 +167,7 @@ void helpinfo(const double c, const double min_r) {
 	<< "--skewstat --out --rmat --anc [--cohort] [--background_r] [--min_r]"
 
 	<< "\n\nNotes:\n"
-	<<"* Assumes first row of relatdness matrix contains individual IDs\n\n";
+	<<"* Assumes first row of relatedness matrix contains individual IDs\n\n";
 }
 
 int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix, std::vector <int> &pedstat, std::vector <int> &skewstat, std::ifstream &anc_is,
