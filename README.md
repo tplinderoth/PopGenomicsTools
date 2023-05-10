@@ -36,8 +36,9 @@ Possible Inputs:
   1: Expected genetic contribution from Hunter etal 2019 (requires --anc)
 
 --skewstat      <INT> Genetic skew statistics
-  1: Mosaic FSJ skew statistic
+  1: Ranked relatedness among relatives
   2: Matrix proportion
+  3: Average rank-weighted relatedness
 
 --out           <STRING> Output name prefix
 --ped           <FILE> ped format file
@@ -48,8 +49,8 @@ Possible Inputs:
 --mincohort     <INT> Exclude indviduals with cohort value below INT
 --maxcohort     <INT> Exclude individuals with cohort value above INT
 --draw          Output direct descendent pedigrees
---background_r  <FLOAT> Background relatedness for Mosaic stat [0]
---min_r         <FLOAT> Consider r values < FLOAT 0 for matrix proportion stat [0]
+--background_r  <FLOAT> Background relatedness for skewstat 1 and 3 [0]
+--min_r         <FLOAT> Consider r values < FLOAT 0 skewstat 2 [0]
 
 Pedigree statistics:
 --pedstat --out --ped --rmat --anc [--pop] [--cohort] [--mincohort] [--maxcohort] [--draw]
@@ -118,15 +119,19 @@ If focal cohort IDs are not supplied assumes all non-ancestral individuals in re
 
 **--skewstat** : This takes an INT argument and performs analyses based on a relatedness matrix. A description of analyses (INT arguments) follows.
 
-1 : Calculates genetic skew statistic used in the Mosaic Florida scrub-jay study. For each ancestral individual in **--anc** this quantifies their 
-genetic representation in the focal cohort based on the proportion of individuals that they are related to and the extent to which they are related to these 
-individuals. **Requirements: --rmat, --anc, --out**.
+1 : Calculates genetic contribution based on ranked relatedness among cohort relatives. Specifically, for each ancestral individual in **--anc** this quantifies their 
+genetic representation in the focal cohort based on the proportion of individuals that they are related to and their rank among all potential ancestors to these individuals. 
+**Requirements: --rmat, --anc, --out**.
 
 2 : Calculates genetic representation for an ancestor based on the ratio of their relatedness with the focal cohort to the total relatedness between all ancestors and the 
 focal cohort. Also calculates the proportion of pairwise {ancestor, focal cohort individual} comparisons for which the relatedness involving 
 the focal ancestor is higher. If neither **--anc** or **--cohort** are supplied statistics are calculated based on all pairwise comparisons in the relatedness matrix. If 
 only **--anc** is supplied, assumes all non-ancestral individuals in relatedness matrix are focal cohort individuals. If only **--cohort** is supplied, assumed all other individuals in 
-relatedness matrix are ancestors. **Requirements: --rmat**.
+relatedness matrix are ancestors. **Requirements: --rmat, --out**.
+
+3 : Calculates genetic contribution based on rank-weighted relatedness to focal cohort individuals. Specifically, for each ancestral individual in **--anc** this is 
+the probability that the ancestor will have the highest ancestral relatedness to a random focal cohort individual and that two alleles drawn from this pair will be 
+identical by descent (IBD). **Requirments: --rmat, --anc, --out**.
 
 **--out** : output file name prefix.
 
@@ -137,8 +142,7 @@ Note that multiple analyses can be run in a single call, e.g. `./relateStats --s
 **--mincohort**/**--maxcohort** : These arguments use the 'cohort' column of the ped input to exclude individuals above **--maxcohort** and below **--mincohort** from the focal cohort. In this 
 way the focal cohort can be supplied using a numeric interval instead of through a list of IDs supplied with **--cohort**.
 
-**--background_r** : Pairs of individuals with relatedness above this value are considered relatives. This is used for calculating the probability that a focal cohort individual is a relative 
-of an ancestor.
+**--background_r** : Pairs of individuals with relatedness above this value are considered relatives.
 
 **--min_r** : Sets relatedness values below this level to zero for --skewstat 2 **S<sub>count</sub>** calculation. This can help reduce noise from very low relatedness values.
 
@@ -178,8 +182,14 @@ Pedigree representation of each ancestral lineage.
 .skewstat2<br>
 **(1) ID** : Ancestor ID.<br>
 **(2) S<sub>count</sub>** : Proportion of all pairwise {ancestor, focal cohort individual} comparisons for which the relatedness involving the ancestor is higher.<br>
-**(3) S<sub>rsub</sub>** : Proportion of the total relatedness between ancestors and focal cohort indivivduals from this ancestor.
+**(3) S<sub>rsub</sub>** : Proportion of the total relatedness between ancestors and focal cohort indivivduals from this ancestor.<br>
 
+**--skewstat 3**
+
+.skewstat3<br>
+**(1) ID** : Ancestor ID.<br>
+**(2) S<sub>wtr</sub>** : Joint probability that the ancestor has the highest ancestral relatedness to a random focal cohort individual and alleles drawn from this pair are IBD.
+ 
 __________
 
 ### betaAFOutlier.R
