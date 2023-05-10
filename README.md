@@ -33,7 +33,7 @@ relateStats <input>
 
 Possible Inputs:
 --pedstat       <INT> Pedigree-based statistics
-  1: Expected genetic contribution from Hunter etal 2019 (requires --anc)
+  1: Expected genetic contribution from Hunter etal 2019
 
 --skewstat      <INT> Genetic skew statistics
   1: Ranked relatedness among relatives
@@ -59,7 +59,7 @@ Skew statistics:
 --skewstat --out --rmat --anc [--cohort] [--background_r] [--min_r]
 
 Notes:
-* Assumes first row of relatdness matrix contains individual IDs
+* Assumes first row of relatedness matrix contains individual IDs
 ```
 #### Inputs
 
