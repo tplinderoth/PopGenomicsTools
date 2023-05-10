@@ -50,7 +50,7 @@ Possible Inputs:
 --maxcohort     <INT> Exclude individuals with cohort value above INT
 --draw          Output direct descendent pedigrees
 --background_r  <FLOAT> Background relatedness for skewstat 1 and 3 [0]
---min_r         <FLOAT> Consider r values < FLOAT 0 skewstat 2 [0]
+--min_r         <FLOAT> Consider r values < FLOAT 0 for skewstat 2 [0]
 
 Pedigree statistics:
 --pedstat --out --ped --rmat --anc [--pop] [--cohort] [--mincohort] [--maxcohort] [--draw]
