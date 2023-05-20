@@ -27,8 +27,6 @@ Help can be printed by running relateStats without arguments, `./relateStats`, o
 
 Which will print
 ```
-$ ./relateStats 
-
 relateStats <input>
 
 Possible Inputs:
@@ -37,23 +35,24 @@ Possible Inputs:
 
 --skewstat      <INT> Genetic skew statistics
   1: Ranked relatedness among relatives
-  2: Matrix proportion
+  2: Relatedness matrix proportion
   3: Average rank-weighted relatedness
 
 --out           <STRING> Output name prefix
 --ped           <FILE> ped format file
 --rmat          <FILE> Relatedness matrix
---pop           <FILE> List of individual IDs to keep for analyses
+--pop           <FILE> Two-column, tab-delimited file specifying (1) individual ID & (2) population ID
 --anc           <FILE> List of ancestor IDs
 --cohort        <FILE> List of individual IDs to restrict genetic representation analyses to
---mincohort     <INT> Exclude indviduals with cohort value below INT
---maxcohort     <INT> Exclude individuals with cohort value above INT
+--time2         <INT> Sets descendant population to all extant individuals between ancestor's cohort and INT
+--t2_only       Restrict representation to individuals born during --time2
+--max_norm      <0|1> Normalize contributions with respect to maximum ancestral cohort contribution if 1 [1]
 --draw          Output direct descendent pedigrees
 --background_r  <FLOAT> Background relatedness for skewstat 1 and 3 [0]
 --min_r         <FLOAT> Consider r values < FLOAT 0 for skewstat 2 [0]
 
 Pedigree statistics:
---pedstat --out --ped --rmat --anc [--pop] [--cohort] [--mincohort] [--maxcohort] [--draw]
+--pedstat --out --ped --rmat --anc [--time2] [--t2_only] [--cohort] [--max_norm] [--draw]
 
 Skew statistics:
 --skewstat --out --rmat --anc [--cohort] [--background_r] [--min_r]
@@ -66,19 +65,19 @@ Notes:
 There are two main types of inputs, a **--ped** pedigree file and/or a **--rmat** relatedness matrix.
 
 **--ped** : This is a tab-delimited ped format file with required columns (1) individual ID, (2) parent 1 ID, (3) parent 2 ID. A header is assumed and required. The names 
-for the first three columns can be anything. Additional columns (in any order) can contain 'sex' ('M','male','F','female', and '*' for missing) and 'cohort' which is an integer value,
-e.g. 0, 1, 2, 2003, 2004, 2021. These columns must be named 'sex' and 'cohort', respectively. A few line example:
+for the first three columns can be anything. Additional columns (in any order) can contain 'sex' ('M','male','F','female', and '*' for missing), an integer-valued 'cohort' 
+(e.g. 0, 1, 2, 2003, 2004, 2021), and integer-valued 'cohort_last' (format same as cohort and indicates the last time point at which an individual is alive). Additional columns 
+must be named 'sex', 'cohort', and 'cohort_last' if used. A few line example:
 
 ```
-ID      SIRE_ID DAM_ID  SEX     COHORT
-SR-BK   LK-WS   PK-BS   FEMALE  2004
-SR-PK   LK-WS   PK-BS   FEMALE  2004
-SR-OK   LK-WS   PK-BS   *       2004
-SR-LK   BK-GS   BK-BS   *       2004
-SR-FK   KRS-    GK-BS   *       2004
-S-WK    *       *       *       *
-OK-FS   *       *       FEMALE  2004
-
+ID      SIRE_ID DAM_ID  SEX     COHORT COHORT_LAST
+SR-BK   LK-WS   PK-BS   FEMALE  2004   2009
+SR-PK   LK-WS   PK-BS   FEMALE  2004   2016
+SR-OK   LK-WS   PK-BS   *       2004   2004
+SR-LK   BK-GS   BK-BS   *       2004   *
+SR-FK   KRS-    GK-BS   *       2007   2008
+S-WK    *       *       MALE    *      2005
+OK-FS   *       *       FEMALE  2008   2010
 ```
 
 **--rmat** : This is a whitespace-delimited, square matrix of pairwise relatedness values. This file must contain a header (as the first row) with the IDs for the 
@@ -93,8 +92,18 @@ APZ-F     PGZ-F     ROZ-F     ORZ-F     OOZ-F
 
 ``` 
 
-**--pop**, **--anc**, **--cohort** : These three arguments are used to restrict analyses to subsets of individuals. Each takes as input a one-column file of individuals IDs,
-where each row is one individual. A few line example:
+**--pop** : Two-column, tab-delimimted file with columns specifying (1) individual ID, and (2) population name. Each row is an individual. Example:
+```
+WSA-K	Site1
+K-RSW	Site18
+SR-PK	Site13
+WSF-K	Site13
+K-GSW	Site13
+SRL-K	Texaco
+SAG-K	Texaco
+```
+
+**--anc**, **--cohort** : Each of these arguments are used to restrict analyses to subsets of individuals and take as input a one-column file of individuals IDs. Each row is one individual. Example:
 ```
 SR-PK
 SR-FK
@@ -106,14 +115,13 @@ WK-SB
 K-GSW
 K-RSW
 ```
-Both **--pedstat** and **--skewstat** calculate the genetic represenation of each ancestor in the **--anc** list in a 'focal cohort' (usually a descendant group
-of individuals) specified in the file passed to **--cohort**. Another list of individuals can be provided with **--pop** to limit analyses only to the individuals 
-in this file.
+Both **--pedstat** and **--skewstat** calculate the genetic representation of each ancestor in the **--anc** list among the 'focal cohort' (usually a descendant group
+of individuals) specified in the file passed to **--cohort**.
 
 **--pedstat** : This takes an INT argument and performs analyses based on an input pedigree. A description of analyses (INT arguments) follows.
 
 1 : Calculate the genetic contribution of each individual in **--anc** to the focal cohort as in 
-[Hunter etal 2019](https://academic.oup.com/jhered/article/110/4/433/5525396). The focal cohort is specified with **--cohort** or **--mincohort**/**--maxcohort**.
+[Hunter etal 2019](https://academic.oup.com/jhered/article/110/4/433/5525396). The focal cohort is specified with **--cohort** or **--time2*. 
 If focal cohort IDs are not supplied assumes all non-ancestral individuals in relatedness matrix are in the focal cohort.
 **Requirements: --rmat, --anc, --out**.
 
@@ -139,8 +147,15 @@ Note that multiple analyses can be run in a single call, e.g. `./relateStats --s
 
 #### More running options
 
-**--mincohort**/**--maxcohort** : These arguments use the 'cohort' column of the ped input to exclude individuals above **--maxcohort** and below **--mincohort** from the focal cohort. In this 
-way the focal cohort can be supplied using a numeric interval instead of through a list of IDs supplied with **--cohort**.
+**--time2** : Treat all individuals alive in the population at the time/cohort value passed this argument as the focal cohort. Requires 'cohort' to be present 
+in ped input.
+
+**--t2_only** : Treat only individuals born at **--time2** as the focal cohort.
+
+**--max_norm** : Normalize contribution of each ancestor based on the maximum contribution that any individual alive in the population at the time of the ancestor's birth 
+could make to the focal cohort. This is the normalization introduced in [Hunter etal 2019](https://academic.oup.com/jhered/article/110/4/433/5525396). This option applies when 
+--pedstat is used and is on by default (1) but can disabled with '0'. Note that if used these normalized values are printed in addition to values normalized with respect to the 
+total contribution among the individuals in **--anc**.
 
 **--background_r** : Pairs of individuals with relatedness above this value are considered relatives.
 
@@ -158,7 +173,10 @@ The following describes the output columns for each analysis.
 .pedstat1<br>
 **(1) ID** : Ancestor ID.<br>
 **(2) N_GENOME_COPIES** : Expected number of ancestor genome copies in focal cohort.<br>
-**(3) GENOME_PROPORTION** : Proportion of the total expected genomic copies from all ancestors in the focal cohort from the given ancestor.
+**(3) P_ANC_FOCAL** : Ancestor's proportion of the total expected genomic copies from all ancestors in **--anc** among the focal cohort.<br>
+**(4) P_ANC_MAX** : Ancestor's proportion of the total expected genomic copies in the focal cohort out of the max contribution possible for any individual alive in the population 
+when the ancestor was born/came into existence (e.g. through migration). This is the Hunter *et al.* (2019) normalized value. Note that here 'alive in the population' really means present 
+in the ped input.<br>
 
 .topo<br>
 Pedigree representation of each ancestral lineage.
