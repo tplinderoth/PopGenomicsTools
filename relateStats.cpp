@@ -32,25 +32,33 @@ public:
 	indiv(std::string);
 	std::string& setid(std::string);
 	std::string id () const;
-	void setPopValue (int value);
-	int popValue () const;
+	void setPop (const std::string &p);
+	const std::string & pop ();
+
+	// public members
 	char sex; // M=male, F=female, '*'=missing
-	int cohort; // year class of individual, -999 = missing
+	float cohort; // year class of individual
+	float cohort_last; // year (class) that individual is last alive (beyond this they are deceased)
 	bool group; // 0=exclude individual from population analysis, 1=include individual in pop analysis
 	std::vector<std::string> offspring; // vector of offspring IDs
+	std::string parents [2]; // array of [parent1, parent2]
 private:
-	// members
+	// private members
 	std::string _id; // individual ID
-	int _popval; // population ID;
+	std::string _pop; // population ID;
 };
 
 indiv::indiv (std::string id = "*")
         : sex('N'),
-          cohort(-999),
+          cohort(NAN),
+	  cohort_last(NAN),
           group(1),
-	 _id(id),
-	 _popval(0)
+          parents({"*"}),
+	  _id(id),
+	  _pop("")
+
 {}
+
 
 std::string& indiv::setid (std::string id = "") {
 	if (!id.empty()) _id = id;
@@ -59,9 +67,9 @@ std::string& indiv::setid (std::string id = "") {
 
 std::string indiv::id() const {return _id;}
 
-void indiv::setPopValue(int value) {_popval = value;}
+void indiv::setPop(const std::string &p) {_pop = p;}
 
-int indiv::popValue() const {return _popval;}
+const std::string & indiv::pop() {return _pop;}
 
 // ARRAY CLASS
 template <class T>
@@ -134,9 +142,19 @@ template<typename T> Array<T>::~Array () {
 }
 
 
+struct timeSort {
+	timeSort(bool descend = false) {this->rev = descend;}
+	bool operator () (const std::pair<int, std::vector<std::string>> &p1, const std::pair<int, std::vector<std::string>> &p2) {
+		if (rev) return (p1.first > p2.first);
+		return (p1.first < p2.first);
+	}
+
+	bool rev;
+};
+
 // define functions
 
-void helpinfo(const double c, const double min_r) {
+void helpinfo(const double c, const double min_r, const bool hunter_norm) {
 	int w1 = 16;
 	int w2 = 8;
 	int w3 = 2;
@@ -152,17 +170,18 @@ void helpinfo(const double c, const double min_r) {
 	<< std::setw(w1) << std::left << "--out" << std::setw(w2) << std::left << "<STRING> Output name prefix\n"
 	<< std::setw(w1) << std::left << "--ped" << std::setw(w2) << std::left << "<FILE> ped format file\n"
         << std::setw(w1) << std::left << "--rmat" << std::setw(w2) << std::left << "<FILE> Relatedness matrix\n"
-	<< std::setw(w1) << std::left << "--pop" << std::setw(w2) << std::left << "<FILE> List of individual IDs to keep for analyses\n"
+	<< std::setw(w1) << std::left << "--pop" << std::setw(w2) << std::left << "<FILE> Two-column, tab-delimited file specifying (1) individual ID & (2) population ID\n"
 	<< std::setw(w1) << std::left << "--anc" << std::setw(w2) << std::left << "<FILE> List of ancestor IDs\n"
 	<< std::setw(w1) << std::left << "--cohort" << std::setw(w2) << std::left << "<FILE> List of individual IDs to restrict genetic representation analyses to\n"
-	<< std::setw(w1) << std::left << "--mincohort" << std::setw(w2) << std::left << "<INT> Exclude indviduals with cohort value below INT\n"
-	<< std::setw(w1) << std::left << "--maxcohort" << std::setw(w2) << std::left << "<INT> Exclude individuals with cohort value above INT\n"
+	<< std::setw(w1) << std::left << "--time2" << std::setw(w2) << std::left << "<INT> Sets descendant population to all extant individuals between ancestor's cohort and INT\n"
+	<< std::setw(w1) << std::left << "--t2_only" << std::setw(w2) << std::left << "Restrict representation to individuals born during --time2\n"
+	<< std::setw(w1) << std::left << "--max_norm" << std::setw(2) << std::left<< "<0|1> Normalize contributions with respect to maximum ancestral cohort contribution if 1 [" << hunter_norm << "]\n"
 	<< std::setw(w1) << std::left << "--draw" << std::setw(w2) << std::left << "Output direct descendent pedigrees\n"
 	<< std::setw(w1) << std::left << "--background_r" << std::setw(w2) << std::left << "<FLOAT> Background relatedness for skewstat 1 and 3 [" << c << "]\n"
 	<< std::setw(w1) << std::left << "--min_r" << std::setw(w2) << std::left << "<FLOAT> Consider r values < FLOAT 0 for skewstat 2 [" << min_r << "]\n"
 
 	<< "\nPedigree statistics:\n"
-	<< "--pedstat --out --ped --rmat --anc [--pop] [--cohort] [--mincohort] [--maxcohort] [--draw]\n"
+	<< "--pedstat --out --ped --rmat --anc [--time2] [--t2_only] [--cohort] [--max_norm] [--draw]\n"
 	<< "\nSkew statistics:\n"
 	<< "--skewstat --out --rmat --anc [--cohort] [--background_r] [--min_r]"
 
@@ -170,17 +189,24 @@ void helpinfo(const double c, const double min_r) {
 	<<"* Assumes first row of relatedness matrix contains individual IDs\n\n";
 }
 
+void countRemaining(const int &argc, const int &argpos, int n) {
+	// n is the length of expected arguments
+	static const std::string user_err("error: Unexpected number of user arguments\n");
+	if ((argc-1)-(argpos+n) < 0) throw user_err;
+}
+
 int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat_is, std::string &outprefix, std::vector <int> &pedstat, std::vector <int> &skewstat, std::ifstream &anc_is,
-	std::ifstream &pop_is, int &mincohort, int &maxcohort, int &draw, std::ifstream &cohort_is, double &background_r, double &min_r) {
+	std::ifstream &pop_is, bool &t2_only, int &draw, std::ifstream &cohort_is, double &background_r, double &min_r, float &time2, bool &max_norm) {
 	int rv = 0;
 	int argpos = 1;
 	if (argc < 2 || strcmp(argv[argpos], "-h") == 0 || strcmp(argv[argpos],"--help") == 0) {
-		helpinfo(background_r, min_r);
+		helpinfo(background_r, min_r, max_norm);
 		return 1;
 	}
 
 	while (argpos < argc) {
 		if (strcmp(argv[argpos],"--ped") == 0) {
+			countRemaining(argc, argpos, 1);
 			const char* pedname = argv[argpos+1];
 			ped_is.open(pedname, std::ios_base::in);
 			if (!ped_is) {
@@ -188,6 +214,7 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 				return -1;
 			}
 		} else if (strcmp(argv[argpos],"--rmat") == 0) {
+			countRemaining(argc, argpos, 1);
 			const char* rmat_name = argv[argpos+1];
 			rmat_is.open(rmat_name, std::ios_base::in);
 			if (!rmat_is) {
@@ -195,6 +222,7 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 				return -1;
 			}
 		} else if (strcmp(argv[argpos],"--out") == 0) {
+			countRemaining(argc, argpos, 1);
 			outprefix = argv[argpos+1];
 		} else if (strcmp(argv[argpos],"--pedstat") == 0) {
 			int s = atoi(argv[argpos+1]);
@@ -204,6 +232,7 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 			}
 			pedstat.push_back(s);
 		} else if (strcmp(argv[argpos],"--skewstat") == 0) {
+			countRemaining(argc, argpos, 1);
 			int s = atoi(argv[argpos+1]);
 			if (s == 1 || s == 2 || s == 3) { // change if adding more skew stat options
 			} else {
@@ -212,6 +241,7 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 			}
 			skewstat.push_back(s);
 		} else if (strcmp(argv[argpos],"--anc") == 0) {
+			countRemaining(argc, argpos, 1);
 			const char* ancf_name = argv[argpos+1];
 			anc_is.open(ancf_name, std::ios_base::in);
 			if (!anc_is) {
@@ -219,37 +249,54 @@ int parseArgs (int argc, char** argv, std::ifstream &ped_is, std::ifstream &rmat
 				return -1;
 			}
 		} else if (strcmp(argv[argpos],"--pop") == 0) {
+			countRemaining(argc, argpos, 1);
 			const char* popf_name = argv[argpos+1];
 			pop_is.open(popf_name, std::ios_base::in);
 			if (!pop_is) {
-				std::cerr << "Unable to open file of focal population IDs: " << popf_name << "\n";
+				std::cerr << "Unable to open population file: " << popf_name << "\n";
 				return -1;
 			}
 		} else if (strcmp(argv[argpos], "--cohort") == 0) {
+			countRemaining(argc, argpos, 1);
 			const char* cohortf_name = argv[argpos+1];
 			cohort_is.open(cohortf_name, std::ios_base::in);
 			if (!cohort_is) {
 				std::cerr << "Unable to open cohort ID file " << cohortf_name << "\n";
 				return -1;
 			}
-		} else if (strcmp(argv[argpos],"--mincohort") == 0) {
-			mincohort = atoi(argv[argpos+1]);
-		} else if (strcmp(argv[argpos],"--maxcohort") == 0) {
-			maxcohort = atoi(argv[argpos+1]);
+		} else if (strcmp(argv[argpos],"--t2_only") == 0) {
+			countRemaining(argc, argpos, 0);
+			t2_only = 1;
+			--argpos;
 		} else if (strcmp(argv[argpos], "--draw") == 0) {
+			countRemaining(argc, argpos, 0);
 			draw = 1;
 			--argpos;
 		} else if (strcmp(argv[argpos],"--background_r") == 0) {
+			countRemaining(argc, argpos, 1);
 			background_r = std::stod(argv[argpos+1]);
 			if (background_r < 0 || background_r > 1) {
 				std::cerr << "background_r out of range (0,1)\n";
 				return -1;
 			}
 		} else if (strcmp(argv[argpos],"--min_r") == 0) {
+			countRemaining(argc, argpos, 1);
 			min_r = std::stod(argv[argpos+1]);
 			if (min_r < 0 || min_r > 1) {
 				std::cerr << "min_r out of range (0,1)\n";
 				return -1;
+			}
+		} else if (strcmp(argv[argpos],"--time2") == 0) {
+			countRemaining(argc, argpos, 1);
+			time2 = atoi(argv[argpos+1]);
+		} else if (strcmp(argv[argpos],"--max_norm") == 0) {
+			countRemaining(argc, argpos, 1);
+			int v = atoi(argv[argpos+1]);
+			if (v == 0 || v == 1) {
+				max_norm = v;
+			} else {
+				std::cerr << "--max_norm only accepts values 0 or 1\n";
+				return  -1;
 			}
 		} else {
 			std::cerr << "Unknown argument: " << argv[argpos] << "\n";
@@ -270,30 +317,65 @@ size_t getIDs (std::ifstream &is, std::vector<std::string>* ids) {
 	return (ids->size());
 }
 
-int readPed(std::ifstream &ped_is, std::vector<indiv>* ped, std::unordered_map<std::string, unsigned int>* pedidx) {
+template <typename T> void idMap(std::ifstream &is, std::unordered_map<std::string, T> &m) {
+	std::string line;
+	std::string key;
+	T val;
+
+	while(getline(is,line)) {
+		std::stringstream ss(line);
+		ss >> key;
+		ss >> val;
+		m.insert({key,val});
+	}
+}
+
+bool isInt(const std::string &str) {
+	int i = 0;
+	for (const char &c : str) {
+		if (!std::isdigit(c)) {
+			if (i == 0 && c == '-') continue; // this allows for negative integers
+			return false;
+		}
+	++i;
+	}
+	return true;
+}
+
+int readPed(std::ifstream &ped_is, std::vector<indiv>* ped, std::unordered_map<std::string, unsigned int>* pedidx, std::vector<std::string>* fields) {
 	std::string line, tok;
 
 	// figure out optional columns. Set fields are [0] = focal individual ID, [1] = parent 1, [2] = parent 2.
 	getline(ped_is,line);
 	std::stringstream ss(line);
-	float fieldidx [2] = {NAN, NAN}; // [0] = sex field, [1] = cohort field
-
+	int nfields = 3;
+	float fieldidx [nfields] = {NAN, NAN, NAN}; // [0] = sex field, [1] = cohort field, [2] = last cohort that individual is alive field
 	int i = 0;
 	while(getline(ss, tok, '\t')) {
 		std::transform(tok.begin(), tok.end(), tok.begin(), ::toupper);
 		if (tok == "SEX") {
 			fieldidx[0] = i; // sex
+			fields->push_back("sex");
 		} else if (tok == "COHORT") {
 			fieldidx[1] = i; // cohort
+			fields->push_back("cohort");
+		} else if (tok == "COHORT_LAST") {
+			fieldidx[2] = i; // last alive cohort
+			fields->push_back("cohort_last");
 		}
 		++i;
 	}
 
-	for (i=0; i<2; i++) {
+	for (i=0; i<nfields; i++) {
 		if (!isnan(fieldidx[i]) && fieldidx[i] < 3) {
+			// first 3 fields should always be ID, parent1, parent2
 			std::cerr << "Invalid field order detected in ped input\n";
 			return 1;
 		}
+		// assumes first three fields are ID, PARENT 1, and PARENT 2
+		if (i==0) fields->push_back("id");
+		if (i==1) fields->push_back("p1");
+		if (i==2) fields->push_back("p2");
 	}
 
 	// store individuals
@@ -315,6 +397,7 @@ int readPed(std::ifstream &ped_is, std::vector<indiv>* ped, std::unordered_map<s
 					++indidx;
 				}
 			} else if ((i == 1 || i == 2) && tok != "*") {
+				(*ped)[(*pedidx)[focalid]].parents[i-1] = tok;
 				if (pedidx->find(tok) == pedidx->end()) {
 					// parent not logged so need to add them
 					ped->push_back(indiv(tok));
@@ -333,15 +416,11 @@ int readPed(std::ifstream &ped_is, std::vector<indiv>* ped, std::unordered_map<s
 				}
 				(*ped)[(*pedidx)[focalid]].sex = sexchar;
 			} else if (!isnan(fieldidx[1]) && i == (int)fieldidx[1]) {
-				for (char const &c : tok) {
-					if (!std::isdigit(c)) {
-						tok = "*";
-						break;
-					}
-				}
-				if (tok != "*") {
-					(*ped)[(*pedidx)[focalid]].cohort = stoi(tok);
-				}
+				if (!isInt(tok)) tok = "*";
+				if (tok != "*") (*ped)[(*pedidx)[focalid]].cohort = stoi(tok);
+			} else if (!isnan(fieldidx[2]) && i == (int)fieldidx[2]) {
+				if (!isInt(tok)) tok = "*";
+				if (tok != "*") (*ped)[(*pedidx)[focalid]].cohort_last = stoi(tok);
 			}
 			++i;
 		}
@@ -408,6 +487,7 @@ int findMatIndex (unsigned int* idx, vecmap &matidx, const std::vector<std::stri
 	for(std::vector<std::string>::const_iterator it = ids->begin(); it != ids->end(); ++it) {
 		if (matidx.find(*it) == matidx.end()) {
 			std::string err("error :" + *it + " not in r matrix\n");
+			std::cerr << err << "\n";
 			throw err;
 		}
 		idx[i] = matidx[*it];
@@ -416,15 +496,137 @@ int findMatIndex (unsigned int* idx, vecmap &matidx, const std::vector<std::stri
 	return i;
 }
 
+void groupByTime(std::vector<std::pair<int,std::vector<std::string>>> &cohorts, const std::vector<indiv> &ped, bool descend = false) {
+	size_t sz = cohorts.size();
+	cohorts.resize(sz + ped.size());
+	std::unordered_map<int, unsigned int> vecidx;
+	unsigned int c = 0;
+	for (const indiv &i : ped) {
+		if (!isnan(i.cohort)) {
+			if (vecidx.find(i.cohort) == vecidx.end()) {
+				vecidx[i.cohort] = c;
+				cohorts[vecidx[i.cohort]].first = i.cohort;
+				//std::cout << cohorts[vecidx[i.cohort]].first << "\n";
+				size_t prevsize = cohorts[vecidx[i.cohort]].second.size();
+				cohorts[vecidx[i.cohort]].second.reserve(prevsize + ped.size());
+				++c;
+			}
+			cohorts[vecidx[i.cohort]].second.push_back(i.id());
+		}
+	}
+	cohorts.resize(c);
+
+	for (unsigned int i = 0; i<cohorts.size(); ++i) {
+		cohorts[i].second.shrink_to_fit();
+	}
+
+	// sort vector by time
+	std::sort(cohorts.begin(), cohorts.end(), timeSort(descend));
+
+/*
+	// debug printing
+	for (unsigned int i = 0; i<cohorts.size(); ++i) {
+		std::cout << cohorts[i].first << "\n";
+		for (std::vector<std::string>::const_iterator it = (cohorts[i].second).begin(); it != (cohorts[i].second).end(); ++it) {
+			std::cout << *it;
+			if (it == (cohorts[i].second).end()-1) {
+				std::cout << "\n";
+			} else {
+				std::cout << "\t";
+			}
+		}
+	}
+
+*/
+}
+
+double sumRelatedness (const std::string &ancid, const std::vector<std::vector<indiv*>> &lineage, Matrix<double> &rmat, std::unordered_map<std::string, unsigned int> &matidx) {
+	static std::vector<indiv*>::const_iterator ind_iter;
+	static std::unordered_map<std::string, int> seen;
+	seen.clear();
+	seen.reserve(rmat.rown());
+	double ind_total = 0;
+	unsigned int gen = 0;
+	std::stringstream ss;
+
+	if (matidx.find(ancid) == matidx.end()) {
+		std::string miserr_row("error: " + ancid + " not in relatedness matrix\n");
+		std::cerr << miserr_row;
+		throw miserr_row;
+	}
+
+	while (lineage[gen].size() > 0) {
+		for (ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
+			if (matidx.find(ancid) == matidx.end()) {
+				std::string miserr_col("error: " + (*ind_iter)->id() + " not in relatedness matrix\n");
+				std::cerr << miserr_col;
+				throw miserr_col;
+			}
+			ss.str(std::string());
+			ss.clear();
+			ss << matidx[ancid];
+			std::string elem(ss.str());
+			ss.str(std::string());
+			ss.clear();
+ 			ss << matidx[(*ind_iter)->id()];
+			elem += "_" + ss.str();
+			//std::cout << elem << "\n"; // debug
+			if (seen.find(elem) == seen.end()) {
+				/*
+				* relationship has not been recorded yet, so do so. Relantionships can get logged twice if an descendant (ind2) produces
+				* offspring with their parent (ind1) because the offspring gets logged in lineage vector for both ind1 and ind2. This prevents
+				* dobule counting.
+				*/
+				if ((*ind_iter)->group) {
+					ind_total += rmat[matidx[ancid]][matidx[(*ind_iter)->id()]];
+					//std::cout << "anc: " << ancid << "\t" << (*ind_iter)->id() << "\t" << (*ind_iter)->cohort << "\n"; // debug
+				}
+				seen.insert({elem,1});
+			}
+		}
+		++gen;
+	}
+	return ind_total;
+}
+
+void collectDescendants (const std::string ancid, std::vector<indiv> &ped, std::unordered_map<std::string, unsigned int> &pedidx,
+   std::vector<std::vector<indiv*>> &lineage, std::unordered_map<std::string, bool>* ex = NULL) {
+	lineage.clear();
+	lineage.resize(ped.size()+1); // this is maximum possible generations + 1
+	unsigned int gen = 0;
+	lineage[gen].push_back(&ped[pedidx[ancid]]);
+	if (ex) (*ex)[ancid] = 1;
+	size_t noffspring = lineage[0][0]->offspring.size();
+		while (noffspring > 0) {
+			size_t offgen = gen+1;
+			noffspring = 0;
+			for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
+				for (std::vector<std::string>::iterator offspring_iter = (*ind_iter)->offspring.begin(); offspring_iter != (*ind_iter)->offspring.end(); ++offspring_iter) {
+					if (ex == NULL || ex->find(*offspring_iter) == ex->end()) {
+						lineage[offgen].push_back(&ped[pedidx[*offspring_iter]]);
+						noffspring++;
+					}
+				}
+			}
+			++gen;
+		}
+}
 
 int hunterStat (std::vector<indiv> &ped, std::unordered_map<std::string, unsigned int> &pedidx, Matrix<double> &rmat,
-   std::unordered_map<std::string, unsigned int> &matidx, std::vector<std::string> &matids, std::string &outprefix, std::vector<std::string>* pop,
-   std::vector<std::string> *anc, int mincohort, int maxcohort, int draw, std::vector<std::string>* cohort) {
+   std::unordered_map<std::string, unsigned int> &matidx, std::vector<std::string> &matids, std::string &outprefix, std::vector<std::string> *anc,
+   const bool &t2_only, int draw, std::vector<std::string>* cohort, const std::vector<std::string> &fields, const float &time2, const bool max_norm) {
 	int rv  = 0;
 
 	if (anc->size() < 1) {
-		std::cerr << "Hunter stat requires passing ancestral individuals with --anc\n";
-		return -1;
+		std::string empty_anc_err("Hunter stat requires passing ancestral individuals with --anc\n");
+		std::cerr << empty_anc_err;
+		throw empty_anc_err;
+	}
+
+	if (t2_only && isnan(time2)) {
+		std::string t2_dep_err("--t2_only requires --time2\n");
+		std::cerr << t2_dep_err;
+		throw t2_dep_err;
 	}
 
 	// open output streams
@@ -433,126 +635,110 @@ int hunterStat (std::vector<indiv> &ped, std::unordered_map<std::string, unsigne
 	std::ofstream drawstream;
 	if (draw) drawstream.open((outprefix + ".topo").c_str(), std::ios_base::out);
 
-	// set focal population and count focal size
-	int effective_pop_n = 0;
-	int cohort_n = 0;
-	for (std::vector<indiv>::iterator pediter = ped.begin(); pediter != ped.end(); ++pediter) {
-		int v = 1;
-		if (pop->size() > 0 && std::find(pop->begin(), pop->end(), pediter->id()) == pop->end()) v = 0;
-		pediter->setPopValue(v);
-		if (cohort->size() > 0 && std::find(cohort->begin(), cohort->end(), pediter->id()) == cohort->end()) pediter->group = 0;
-		if (pediter->popValue() > 0) {
-			if ((mincohort != -999 && pediter->cohort < mincohort) || (maxcohort != -999 && pediter->cohort > maxcohort)) continue;
-			++effective_pop_n;
-			if (pediter->group) ++cohort_n;
+	// check for input fields
+	//for (const std::string &f : fields) {
+	//	std::cout << f << "\n"; // debug
+	//}
+	bool cohort_info = (std::find(fields.begin(), fields.end(), "cohort") != fields.end()) ? true : false;
+	bool survive_info = (std::find(fields.begin(), fields.end(), "cohort_last") != fields.end()) ? true : false;
+
+	std::vector<std::pair<int,std::vector<std::string>>> time_cohorts;
+	std::unordered_map<int, unsigned int> timeidx;
+	if (cohort_info) {
+		groupByTime(time_cohorts, ped, true);
+ 		unsigned int k = 0;
+		for (const std::pair<int,std::vector<std::string>> &t : time_cohorts) {
+			timeidx[t.first] = k;
+			++k;
 		}
 	}
-	std::cerr << "Focal population size: " << effective_pop_n << "\n";
-	std::cerr << "Focal cohort size: " << cohort_n << "\n";
 
-	// check ped file parsing (debug)
-	/*
-	std::cerr << "ped vector size: " << ped.size() << "\nped index vector size: " << pedidx.size() << "\n";
-	for (std::vector<indiv>::iterator it = ped.begin(); it != ped.end(); it++) {
-		std::cout << it->id() << " " << it->popValue() << ":";
-		for (std::vector<std::string>::iterator child_iter = (*it).offspring.begin(); child_iter != (*it).offspring.end(); child_iter++) {
-			std::cout << " " << *child_iter;
+	// check for necessary normalization input
+	if (max_norm) {
+		if (!cohort_info) {
+			std::string cohort_err("error: Ancestral population normalization requires 'COHORT' in input ped\n");
+			std::cerr << cohort_err;
+			throw cohort_err;
 		}
-		std::cout << "\n";
-	}
-	*/
-
-	// check matrix parsing (debug)
-	/*
-	for (std::vector<std::string>::iterator it = matids.begin(); it != matids.end(); ++it) {
-		std::cout << ((it == matids.begin())? "" : "\t" ) << *it;
-	}
-	std::cout << "\n";
-	for (size_t i = 0; i < rmat.rown(); ++i) {
-		for (size_t j = 0; j < rmat.coln(); ++j) {
-			std::cout << ((j == 0) ? "" : "\t") << rmat[i][j];
+		if (!t2_only && !survive_info) {
+			std::string cohort_last_err("error: Ancestral population normalization requires requires 'COHORT_LAST' in input ped\n");
+			std::cerr << cohort_last_err;
+			throw cohort_last_err;
 		}
-		std::cout << "\n";
 	}
-	*/
 
-	// Check for pedigree individuals not present in the relatedness matrix
-	for (vecmap::iterator it = pedidx.begin(); it != pedidx.end(); ++it) {
-		if (ped[it->second].popValue() != 0 && matidx.find(it->first) == matidx.end()) {
-			std::cerr << "warning: " << it->first << " missing from relatedness matrix\n";
+	// mask individuals from statistic calculation
+	std::vector<indiv>::iterator pediter;
+
+	if (!isnan(time2)) {
+		for (pediter = ped.begin(); pediter != ped.end(); ++pediter) {
+			if (t2_only) {
+				// mask individuals not born in time2 or with missing cohort info
+				if (isnan(pediter->cohort) || pediter->cohort != time2) pediter->group = 0;
+			} else {
+				// mask individuals not alive at time of focal descendant cohort or with missing survival information
+				if (isnan(pediter->cohort) || isnan(pediter->cohort_last) || pediter->cohort > time2  || pediter->cohort_last < time2) pediter->group = 0;
+			}
+		}
+	}
+
+
+	float maxcohort = NAN;
+	float minanc = NAN;
+	if (!cohort->empty()) {
+		for (pediter = ped.begin(); pediter != ped.end(); ++pediter) {
+			// mask individuals not in specified cohort (and record cohort of oldest individual)
+			if (std::find(cohort->begin(), cohort->end(), pediter->id()) == cohort->end()) {
+				pediter->group = 0;
+			} else if (cohort_info) {
+				if (!isnan(pediter->cohort) && (isnan(maxcohort) || pediter->cohort > maxcohort)) maxcohort = pediter->cohort;
+			}
 		}
 	}
 
 	// process pedigree
-	std::vector<std::pair<std::string, double>> ind_stats;
+
+	std::unordered_map<std::string, double> ind_stats;
 	ind_stats.reserve(anc->size());
 	double pop_total = 0;
-	std::unordered_map<std::string, int> seen;
-	seen.reserve(rmat.rown());
+	std::vector<std::vector<indiv*>> lineage;
+	std::vector<indiv*>::iterator ind_iter;
+	std::vector<std::string>::iterator offspring_iter;
+
+	// calculate expected genetic contribution for each focal ancestor
+	std::unordered_map<float, int> seen_times;
+	seen_times.reserve(time_cohorts.size());
+
 	for (std::string const &ancid : *anc) {
-		std::vector<std::vector<indiv*>> lineage;
-		unsigned int gen = 0;
-		lineage.resize(ped.size()+1); // this is maximum possible generations + 1
-		lineage[gen].push_back(&ped[pedidx[ancid]]);
-		size_t noffspring = lineage[0][0]->offspring.size();
-		while (noffspring > 0) {
-			size_t offgen = gen+1;
-			noffspring = 0;
-			for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
-				if ((*ind_iter)->popValue() == 1) { // screen of population inclusion
-					if ((*ind_iter)->cohort != -999 && ((mincohort != -999 && (*ind_iter)->cohort < mincohort) || (maxcohort != -999 && (*ind_iter)->cohort > maxcohort))) {
-						continue; // skip if not in set year/cohort range
-					}
-					for (std::vector<std::string>::iterator offspring_iter = (*ind_iter)->offspring.begin(); offspring_iter != (*ind_iter)->offspring.end(); ++offspring_iter) {
-						lineage[offgen].push_back(&ped[pedidx[*offspring_iter]]);
-						noffspring++;
-					}
-				}
-			}
-			++gen;
+		float anc_age = ped[pedidx[ancid]].cohort;
+		if (!isnan(anc_age)) {
+			seen_times[anc_age] = 1; // used to track the different year classes represented among focal ancestors
+			if (isnan(minanc) || anc_age < minanc) minanc = anc_age;
 		}
 
-		// calculate statistics
-		seen.clear();
-		double ind_total = 0;
-		gen = 0;
-		std::stringstream ss;
-		//std::cout << "## LINEAGE " << ancid << " ##\n"; // debug
-		while (lineage[gen].size() > 0) {
-			for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
-				ss.str(std::string());
-				ss.clear();
-				ss << matidx[ancid];
-				std::string elem(ss.str());
-				ss.str(std::string());
-				ss.clear();
-				ss << matidx[(*ind_iter)->id()];
-				elem += "_" + ss.str();
-				//std::cout << elem << "\n"; // debug
-				if (seen.find(elem) == seen.end()) {
-					// relationship has not been recorded yet, so do so
-					if ((*ind_iter)->group) {
-						ind_total += rmat[matidx[ancid]][matidx[(*ind_iter)->id()]];
-					}
-					seen.insert({elem,1});
-				}
-			}
-			++gen;
-		}
-		ind_stats.push_back(std::make_pair(ancid, ind_total));
-		pop_total += ind_total;
+		// find all direct descedants of ancestor
+		collectDescendants(ancid, ped, pedidx, lineage);
 
-		// draw pedigrees
+		// sum contributions of ancestor down its direct line of descent
+		try {
+			double ind_total = sumRelatedness(ancid, lineage, rmat, matidx);
+			ind_stats[ancid] = ind_total;
+			pop_total += ind_total;
+		} catch (const std::string &err) {
+			throw;
+		}
+
+		// draw lineage pedigree for ancestor
 		if (draw) {
-			gen = 0;
+			unsigned int gen = 0;
 			drawstream << "## LINEAGE " << ancid << " ##\n";
 			while (lineage[gen+1].size() > 0) {
 				std::string genstr("");
 				if (lineage[gen+1].size() > 0) drawstream << gen+1 << ": ";
-				for (std::vector<indiv*>::iterator ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
+				for (ind_iter = lineage[gen].begin(); ind_iter != lineage[gen].end(); ++ind_iter) {
 					if ((*ind_iter)->offspring.size() == 0) continue;
 						genstr += "(" + (*ind_iter)->id() + ")";
-					for (std::vector<std::string>::iterator offspring_iter = (*ind_iter)->offspring.begin(); offspring_iter != (*ind_iter)->offspring.end(); ++offspring_iter) {
+					for (offspring_iter = (*ind_iter)->offspring.begin(); offspring_iter != (*ind_iter)->offspring.end(); ++offspring_iter) {
 						genstr += " " + *offspring_iter;
 					}
 					genstr += " ## ";
@@ -563,11 +749,85 @@ int hunterStat (std::vector<indiv> &ped, std::unordered_map<std::string, unsigne
 		}
 	}
 
+	if (!isnan(maxcohort) && !isnan(minanc) && minanc > maxcohort) {
+		std::cerr << "warning: At least some individuals in cohort were born before ancestors\n";
+	}
+
+	// calculate contributions by cohort time for Hunter stat normalization
+	std::unordered_map<int, double> time_norm;
+
+	if (max_norm) {
+		// calculate maximum ancestral contribution by time period
+		std::vector<std::pair<int,std::vector<std::string>>>::const_iterator past_iter;
+
+		// go through time periods found for all focal ancestors
+		for (std::unordered_map<float, int>::const_iterator time_iter = seen_times.begin(); time_iter != seen_times.end(); ++time_iter) {
+			time_norm[time_iter->first] = 0;
+			if (time_iter->first > time2) continue; // ancestors born after focal descendant cohort cannot contribute to it
+			double* total_ptr = &time_norm[time_iter->first];
+			std::unordered_map<std::string, bool> seen_anc;
+			seen_anc.reserve(ped.size());
+
+			// starting at the time of ancestor's birth work backwards through time (this focuses on individuals that are extant at the time of ancestor's birth)
+			for (past_iter = time_cohorts.begin()+timeidx[time_iter->first]; past_iter != time_cohorts.end(); ++past_iter) {
+
+				// go through all extant individuals for current time period
+				for (const std::string &id : past_iter->second) {
+					indiv* ancptr = &ped[pedidx[id]];
+					if (isnan(ancptr->cohort_last) || ancptr->cohort_last < time_iter->first) continue; // died before ancestor birth or unknown survival
+
+					// Check if the contribution of this focal period ancestor was already calculated (no need to do this twice)
+					if (past_iter->first == time_iter->first && ancptr->cohort == time_iter->first) {
+						*total_ptr += ind_stats[id];
+						seen_anc[id] = 1;
+						continue;
+					}
+
+					// collect all direct descendants of focal individual
+					collectDescendants(id, ped, pedidx, lineage, &seen_anc);
+
+					// sum contribution of focal individual down its direct line of descent
+					try {
+						*total_ptr += sumRelatedness(id, lineage, rmat, matidx);
+					} catch (const std::string &err) {
+						throw;
+					}
+					seen_anc[id] = 1;
+				}
+			}
+		}
+
+	}
+
 	// output statistics
-	if (pop_total == 0) std::cerr << "warning: Total ancestral contribution is zero\n";
-	outstream << "ID\tN_GENOME_COPIES\tGENOME_PROPORTION\n";
-	for (sdpvec::iterator it = ind_stats.begin(); it != ind_stats.end(); ++it) {
-		outstream << it->first << "\t" << it->second << "\t" << it->second/pop_total << "\n";
+	if (pop_total == 0) std::cerr << "warning: Total focal ancestral contribution is zero\n";
+
+	std::string header("ID\tN_GENOME_COPIES\tP_ANC_FOCAL");
+	if (max_norm) {
+		header += "\tP_ANC_MAX\t";
+		std::vector<int> t2vec;
+		t2vec.reserve(time_norm.size());
+		for (const auto &kv : time_norm) {
+			t2vec.push_back(kv.first);
+		}
+		std::cerr << "\n# Maximum population contribution to descedants by ancestral cohort\n";
+		std::sort(t2vec.begin(),t2vec.end());
+		for (const int &t2 : t2vec) {
+			std::cerr << t2 << ": " << time_norm[t2] << "\n";
+		}
+		std::cerr << "\n";
+	}
+	outstream << header << "\n";
+	for (std::string const &ancid : *anc) {
+		double ngenome = ind_stats[ancid];
+		double proportion_focal_anc = pop_total > 0 ? ngenome/pop_total : NAN;
+		outstream << ancid << "\t" << ngenome << "\t" << proportion_focal_anc;
+		if (max_norm) {
+			indiv* indptr = &ped[pedidx[ancid]];
+			double proportion_anc_max = (!isnan(indptr->cohort) && time_norm[indptr->cohort] > 0) ? ngenome/time_norm[indptr->cohort] : NAN;
+			outstream << "\t" << proportion_anc_max;
+		}
+		outstream << "\n";
 	}
 
 	// close output stream
@@ -975,17 +1235,24 @@ int main (int argc, char** argv) {
 	std::vector <int> pedstat; // type of pedigree statistic to calculate
 	std::vector <int> skewstat; // type of skew statistic to calculate
 	std::ifstream anc_is; // focal individual input stream
-	std::ifstream pop_is; // focal population input stream
+	std::ifstream pop_is; // population ID input stream
 	std::ifstream cohort_is; // list of IDs to calculate representation among
-	int maxcohort = -999, mincohort = -999;
+	float time2 = NAN; // descendant population time point
+	bool t2_only = 0; // calculate representation only among individuals born during time2
+	bool max_norm = 1; // if 1 normalize contributions using max ancestral cohort contribution as in Hunter etal 2019
 	int draw = 0; // draw direct descendent pedigree if 1
 	double background_r = 0.0; // background relatedness level used for Mosaic statistic
 	double min_r = 0.0; // minimum r value, currently not used
 
 	// parse arguments
-	if ((rv = parseArgs(argc, argv, ped_is, rmat_is, outprefix, pedstat, skewstat, anc_is, pop_is, mincohort, maxcohort, draw, cohort_is, background_r, min_r))) {
-		if (rv == 1) rv = 0;
-		return rv;
+	try {
+		if ((rv = parseArgs(argc, argv, ped_is, rmat_is, outprefix, pedstat, skewstat, anc_is, pop_is, t2_only, draw, cohort_is, background_r, min_r, time2, max_norm))) {
+			if (rv == 1) rv = 0;
+			return rv;
+		}
+	} catch (const std::string &err) {
+		std::cerr << err;
+		return -1;
 	}
 
 	// parse ID lists
@@ -996,18 +1263,16 @@ int main (int argc, char** argv) {
 	}
 	if (anc_is.is_open()) anc_is.close();
 
-	std::vector<std::string> pop; // vector of individual IDs in focal population
-	if (pop_is.is_open() && !getIDs(pop_is, &pop)) {
-		std::cerr << "error: Read zero focal population IDs\n";
-		return -1;
-	}
-	if (pop_is.is_open()) pop_is.close();
-
 	std::vector<std::string> cohort; // vector of cohort IDs
 	if (cohort_is.is_open() && !getIDs(cohort_is, &cohort)) {
 		std::cerr << "error: Read zero cohort individual IDs\n";
 		return -1;
 	}
+
+	// parse ID maps (e.g. for population)
+	std::unordered_map<std::string, std::string> pop; // map relating IDs of individuals to their population
+	idMap<std::string>(pop_is, pop);
+	if (pop_is.is_open()) pop_is.close();
 
 	// read in relatedness matrix
         std::unordered_map<std::string, unsigned int> matidx;
@@ -1020,10 +1285,12 @@ int main (int argc, char** argv) {
 	}
 
 	// read in pedigree
+	std::vector<std::string> fields; // stores pedigree fields
+	fields.reserve(6);
         std::vector<indiv> ped;
         std::unordered_map<std::string, unsigned int> pedidx;
 	if (ped_is.is_open()) {
-		if ((rv = readPed(ped_is, &ped, &pedidx))) return rv;
+		if ((rv = readPed(ped_is, &ped, &pedidx, &fields))) return rv;
 		ped_is.close();
 	}
 
@@ -1037,14 +1304,22 @@ int main (int argc, char** argv) {
 				std::cerr << "Hunter stat requires passing ancestral individuals with --anc\n";
 				return -1;
 			}
-			if ((rv = hunterStat(ped, pedidx, rmat, matidx, matids, outprefix, &pop, &anc, mincohort, maxcohort, draw, &cohort))) return rv;
+			try {
+				hunterStat(ped, pedidx, rmat, matidx, matids, outprefix, &anc, t2_only, draw, &cohort, fields, time2, max_norm);
+			} catch (const std::string & err) {
+				return -1;
+			}
 		}
 	}
 
 	for (iter = skewstat.begin(); iter != skewstat.end(); ++iter) {
 		if (*iter == 1) {
 			std::cerr << "Calculating Mosaic skew statistic\n";
-			if ((rv = mosaicStat(rmat, matidx, matids, outprefix, &anc, &cohort, background_r))) return rv;
+			try {
+				if ((rv = mosaicStat(rmat, matidx, matids, outprefix, &anc, &cohort, background_r))) return rv;
+			} catch (const std::string & err) {
+				return -1;
+			}
 		}
 		if (*iter == 2) {
 			std::cerr << "Calculating matrix proportion skew statistic\n";
