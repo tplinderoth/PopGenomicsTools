@@ -121,7 +121,7 @@ of individuals) specified in the file passed to **--cohort**.
 **--pedstat** : This takes an INT argument and performs analyses based on an input pedigree. A description of analyses (INT arguments) follows.
 
 1 : Calculate the genetic contribution of each individual in **--anc** to the focal cohort as in 
-[Hunter etal 2019](https://academic.oup.com/jhered/article/110/4/433/5525396). The focal cohort is specified with **--cohort** or **--time2*. 
+[Hunter etal 2019](https://academic.oup.com/jhered/article/110/4/433/5525396). The focal cohort is specified with **--cohort** or **--time2**. 
 If focal cohort IDs are not supplied assumes all non-ancestral individuals in relatedness matrix are in the focal cohort.
 **Requirements: --rmat, --anc, --out**.
 
