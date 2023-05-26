@@ -760,10 +760,10 @@ int hunterStat (std::vector<indiv> &ped, std::unordered_map<std::string, unsigne
 		// calculate maximum ancestral contribution by time period
 		std::vector<std::pair<int,std::vector<std::string>>>::const_iterator past_iter;
 
-		// go through time periods found for all focal ancestors
+		// go through all time periods found among focal ancestors (need a normalization for each time period)
 		for (std::unordered_map<float, int>::const_iterator time_iter = seen_times.begin(); time_iter != seen_times.end(); ++time_iter) {
 			time_norm[time_iter->first] = 0;
-			if (time_iter->first > time2) continue; // ancestors born after focal descendant cohort cannot contribute to it
+			//if (!isnan(time2) && time_iter->first > time2) continue; // ancestors born after focal descendant cohort so cannot contribute to it - DISABLE because focal cohort can include other exising birds that are still alive
 			double* total_ptr = &time_norm[time_iter->first];
 			std::unordered_map<std::string, bool> seen_anc;
 			seen_anc.reserve(ped.size());
@@ -776,8 +776,8 @@ int hunterStat (std::vector<indiv> &ped, std::unordered_map<std::string, unsigne
 					indiv* ancptr = &ped[pedidx[id]];
 					if (isnan(ancptr->cohort_last) || ancptr->cohort_last < time_iter->first) continue; // died before ancestor birth or unknown survival
 
-					// Check if the contribution of this focal period ancestor was already calculated (no need to do this twice)
-					if (past_iter->first == time_iter->first && ancptr->cohort == time_iter->first) {
+					// if the individual was born at the ancestor focal period check if their contribution was already calculated (no need to do this twice)
+					if (past_iter->first == time_iter->first && ind_stats.find(id) != ind_stats.end()) {
 						*total_ptr += ind_stats[id];
 						seen_anc[id] = 1;
 						continue;
