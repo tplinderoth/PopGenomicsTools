@@ -1,7 +1,7 @@
 PopGenomicsTools
 ================
 
-### A collection of small programs for population genetic analyses
+### A collection of programs for population genetic and pedigree analyses
 
 Contact: Tyler Linderoth, lindero1@msu.edu
 __________________________________________________________________
