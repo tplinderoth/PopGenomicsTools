@@ -1300,10 +1300,24 @@ int main (int argc, char** argv) {
 	for (iter = pedstat.begin(); iter != pedstat.end(); iter++) {
 		if (*iter == 1) {
 			std::cerr << "Calculating Hunter expected contribution\n";
-			if (anc.size() < 1) {
-				std::cerr << "Hunter stat requires passing ancestral individuals with --anc\n";
+			// check for required inputs
+			if (ped.empty()) {
+				std::cerr << "Hunter stat requires a pedigree with --ped\n";
 				return -1;
 			}
+			if (anc.size() < 1) {
+				std::cerr << "Hunter stat requires ancestral individuals with --anc\n";
+				return -1;
+			}
+			if (matids.empty()) {
+				std::cerr << "Hunter stat requires a relatedness matrix with --rmat\n";
+				return -1;
+			}
+			if (outprefix.empty()) {
+				std::cerr << "Hunter stat requires an output name prefix with --out\n";
+				return -1;
+			}
+			// calculate expected genetic contributions
 			try {
 				hunterStat(ped, pedidx, rmat, matidx, matids, outprefix, &anc, t2_only, draw, &cohort, fields, time2, max_norm);
 			} catch (const std::string & err) {
@@ -1315,6 +1329,20 @@ int main (int argc, char** argv) {
 	for (iter = skewstat.begin(); iter != skewstat.end(); ++iter) {
 		if (*iter == 1) {
 			std::cerr << "Calculating Mosaic skew statistic\n";
+			// check for necessary inputs
+			if (matids.empty()) {
+				std::cerr << "skewstat requires a relatedness matrix with --rmat\n";
+				return -1;
+			}
+			if (anc.size() < 1) {
+				std::cerr << "skewstat requires ancestral individuals with --anc\n";
+				return -1;
+			}
+			if (outprefix.empty()) {
+				std::cerr << "skewstat requires an output name prefix with --out\n";
+				return -1;
+			}
+			// calculate skew statistic
 			try {
 				if ((rv = mosaicStat(rmat, matidx, matids, outprefix, &anc, &cohort, background_r))) return rv;
 			} catch (const std::string & err) {
