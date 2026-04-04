@@ -47,7 +47,8 @@ Ouput:
 [8] FAIL_NONAUTO_SITES: Total number of sites in nonautozygous regions discarded due to low quality.
 \n/) if (!@ARGV || scalar @ARGV < 4);
 
-GetOptions('states=s' => \$states_file, 'mask=s' => \$mask_file, 'minq=f' => \$minq, 'minlength=i'=> \$minlength);
+my $rv = GetOptions('states=s' => \$states_file, 'mask=s' => \$mask_file, 'minq=f' => \$minq, 'minlength=i'=> \$minlength);
+die("--> input error, exiting prematurely\n") unless ($rv);
 
 die("Error: --states is required\n") if ! $states_file;
 die("Error: --mask is required\n") if ! $mask_file;
@@ -187,7 +188,7 @@ while (<$maskfh>) {
 close $maskfh;
 
 # calculate autozyogosity
-print STDERR "Warning: there were no accessible sites in file provided with --mask\n";
+print STDERR "Warning: there were no accessible sites in file provided with --mask\n" if $total_unmasked < 1;
 my $froh = $total_unmasked > 0 ? $n_autozygous/$total_unmasked : -9;
 
 # print output
