@@ -34,17 +34,19 @@ Notes:
 - The input file for --states is the output of BCFtools roh run with output type set to "--output-type sr".
 - The mask file should contain regions specifying all callable variable and monomorphic sites in the genome.
 - Assumes site states file and mask file are sorted, i.e., scaffolds and sites are in the same order in both files.
+- Assumes that all SNPs in the states file are in callable regions of the genome.
 - Returns the fraction of unmasked sites in ROH intervals out of the total number of unmasked sites in the genome.
 
 Ouput:
 [1] FROH: Proportion of accessible sites in the genome that are autozygous.
 [2] ANALYZED_ROH: Number of analyzed ROH.
-[3] TOTAL_ACCESSIBLE_SITES: Number of accessible sites \(--mask\) minus those ignored due to low quality \(--minq\)
-[4] TOTAL_NUMBER_ROH: Total number of potential ROH of any length.
-[5] QC_FAIL_ROH: Number of ROH above the minimum length cutoff discarded due to low quality.
-[6] FAIL_ROH_SITES: Total number of sites in ROH discarded due to low quality.
-[7] QC_FAIL_NONAUTO_REGIONS: Number of nonautozygous regions above the minimum length cutoff discarded due to low quality.
-[8] FAIL_NONAUTO_SITES: Total number of sites in nonautozygous regions discarded due to low quality.
+[3] LONGEST_ROH: Longest ROH that passed quality checks.
+[4] TOTAL_ACCESSIBLE_SITES: Number of accessible sites \(--mask\) minus those ignored due to low quality \(--minq\)
+[5] TOTAL_NUMBER_ROH: Total number of potential ROH of any length.
+[6] QC_FAIL_ROH: Number of ROH above the minimum length cutoff discarded due to low quality.
+[7] FAIL_ROH_SITES: Total number of sites in ROH discarded due to low quality.
+[8] QC_FAIL_NONAUTO_REGIONS: Number of nonautozygous regions above the minimum length cutoff discarded due to low quality.
+[9] FAIL_NONAUTO_SITES: Total number of sites in nonautozygous regions discarded due to low quality.
 \n/) if (!@ARGV || scalar @ARGV < 4);
 
 my $rv = GetOptions('states=s' => \$states_file, 'mask=s' => \$mask_file, 'minq=f' => \$minq, 'minlength=i'=> \$minlength);
@@ -69,10 +71,19 @@ my $roh_sites_fail = 0; # number of potential roh sites ignored due to quality c
 my $nhwe_qc_fail = 0; # number of nonautozygous tracts amove minlength, but ignored due to quality cutoffs
 my $hwe_sites_fail = 0; # number of nonautozygous sites ignored due to quality cutoffs
 my @interval = (); # scaffold, start, end, state [0 = nonautozygous, 1 = autozygous]
-my @qcregion = ("", -1, -1);
+my $longest = 0; # longest ROH region
 my $qsum;
 my $nsnps;
 my $maskstr;
+
+# calculate total unmasked genome size and store accessible regions
+my @access;
+while (<$maskfh>) {
+	chomp;
+	my @tok = split(/\t/, $_);
+	$total_unmasked += $tok[2] - $tok[1] + 1;
+	push @access, [@tok];
+}
 
 # initialize interval info
 while (<$hmmfh>) {
@@ -87,6 +98,7 @@ while (<$hmmfh>) {
 	}
 }
 
+my $m = -1; # accessible region index
 while (<$hmmfh>) {
 	next unless $_ =~ /^ROH/;
 	chomp;
@@ -101,38 +113,38 @@ while (<$hmmfh>) {
 		my $reglen = $interval[2] - $interval[1] + 1;
 		my $avgq = $qsum/$nsnps;
 		if ($reglen >= $minlength) {
+			# start on mask region overlapping the previous interval to ensure that mask regions spanning two intervals are accounted for
+			$m = $m - 1;
 			# catch up the accessible regions to interval in order to figure out overlaps between interval and unmasked regions
-			while (!eof($maskfh) && (($qcregion[0] ne $interval[0]) || ($qcregion[0] eq $interval[0] && $qcregion[2] < $interval[1]))) {
-				# read through accessible regions of the genome until either the start or end (or both) end points of the mask region are within the interval
-				chomp($maskstr = <$maskfh>);
-				@qcregion = split(/\t/, $maskstr);
-				$total_unmasked += $qcregion[2] - $qcregion[1] + 1;
+			while ($m < $#access && (($access[$m]->[0] ne $interval[0]) || ($access[$m]->[0] eq $interval[0] && $access[$m]->[2] < $interval[1]))) {
+				# read through accessible regions of the genome until the end of the accessible region is at or beyond the start of the interval
+				$m++;
 			}
 			# Calculate region overlap and progress the masked regions until no more overlaps are found with the current interval
 			my $ovl;
 			do {
 				$ovl = 0;
-				if ($qcregion[0] eq $interval[0]) {
-					if ($interval[1] >= $qcregion[1] && $interval[1] <= $qcregion[2] && $interval[2] > $qcregion[2]) {
+				if ($access[$m]->[0] eq $interval[0]) {
+					if ($interval[1] >= $access[$m]->[1] && $interval[1] <= $access[$m]->[2] && $interval[2] > $access[$m]->[2]) {
 					           #-------------# interval
 						#-------# mask
-						$ovl = $qcregion[2] - $interval[1] + 1;
-					} elsif ($interval[1] < $qcregion[1] && $interval[2] >= $qcregion[1] && $interval[2] <= $qcregion[2]) {
+						$ovl = $access[$m]->[2] - $interval[1] + 1;
+					} elsif ($interval[1] < $access[$m]->[1] && $interval[2] >= $access[$m]->[1] && $interval[2] <= $access[$m]->[2]) {
 						#-----------# interval
 						         #-----# mask
-						$ovl = $interval[2] - $qcregion[1] + 1;
-					} elsif ($interval[1] < $qcregion[1] && $interval[2] > $qcregion[2]) {
+						$ovl = $interval[2] - $access[$m]->[1] + 1;
+					} elsif ($interval[1] < $access[$m]->[1] && $interval[2] > $access[$m]->[2]) {
 						#----------------# interval
 						     #------# mask
-						$ovl = $qcregion[2] - $qcregion[1] + 1;
-					} elsif ($interval[1] >= $qcregion[1] && $interval[2] <= $qcregion[2]) {
+						$ovl = $access[$m]->[2] - $access[$m]->[1] + 1;
+					} elsif ($interval[1] >= $access[$m]->[1] && $interval[2] <= $access[$m]->[2]) {
 						      #------# interval
 						#-------------------# mask
 						$ovl = $interval[2] - $interval[1] + 1;
 					}
 				}
-				die("Error: unexpected overlap, $ovl, comparing '@interval' and '@qcregion'") if $ovl < 0;
-				die("Error: accessability mask does not contain all sites in --states file") if (eof($maskfh) && $ovl < 1);
+				die("Error: unexpected overlap, $ovl, comparing regions '@interval' and '@{$access[$m]}'") if $ovl < 0;
+				die("Error: accessability mask does not contain all sites in --states file") if ($m == $#access && !$ovl);
 				# update the number of autozygous sites in accessible ROH regions
 				if ($ovl) {
 					if ($avgq >= $minq) {
@@ -143,11 +155,9 @@ while (<$hmmfh>) {
 						$hwe_sites_fail += $ovl if ($interval[3] == 0);
 					}
 					# advance mask
-					chomp($maskstr = <$maskfh>);
-					@qcregion = split(/\t/, $maskstr);
-					$total_unmasked += $qcregion[2] - $qcregion[1] + 1;
+					$m++;
 				}
-			} until (!$ovl || eof($maskfh));
+			} until (!$ovl || $m > $#access);
 		}
 
 		# update tallies
@@ -156,6 +166,7 @@ while (<$hmmfh>) {
 			if ($reglen >= $minlength) {
 				if ($avgq >= $minq) {
 					$ntracts_keep++;
+					$longest = $reglen if $reglen > $longest;
 				} else {
 					$nroh_qc_fail++;
 				}
@@ -179,20 +190,12 @@ while (<$hmmfh>) {
 }
 close $hmmfh;
 
-# count the remaining accessible sites in the genome
-while (<$maskfh>) {
-	chomp;
-	@qcregion = split(/\t/, $_);
-	$total_unmasked += $qcregion[2] - $qcregion[1] + 1;
-}
-close $maskfh;
-
 # calculate autozyogosity
 print STDERR "Warning: there were no accessible sites in file provided with --mask\n" if $total_unmasked < 1;
 my $froh = $total_unmasked > 0 ? $n_autozygous/$total_unmasked : -9;
 
 # print output
-print STDOUT "FROH\tANALYZED_ROH\tAUTOZYGOUS_SITES\tTOTAL_ACCESSIBLE_SITES\tTOTAL_NUMBER_ROH\tQC_FAIL_ROH\tFAIL_ROH_SITES\tQC_FAIL_NONAUTO_REGIONS\tFAIL_NONAUTO_SITES\n";
-print STDOUT "$froh\t$ntracts_keep\t$n_autozygous\t$total_unmasked\t$ntracts_total\t$nroh_qc_fail\t$roh_sites_fail\t$nhwe_qc_fail\t$hwe_sites_fail\n";
+print STDOUT "FROH\tANALYZED_ROH\tLONGEST_ROH\tAUTOZYGOUS_SITES\tTOTAL_QCPASS_ACCESSIBLE_SITES\tTOTAL_NUMBER_ROH\tQC_FAIL_ROH\tFAIL_ROH_SITES\tQC_FAIL_NONAUTO_REGIONS\tFAIL_NONAUTO_SITES\n";
+print STDOUT "$froh\t$ntracts_keep\t$longest\t$n_autozygous\t$total_unmasked\t$ntracts_total\t$nroh_qc_fail\t$roh_sites_fail\t$nhwe_qc_fail\t$hwe_sites_fail\n";
 
 exit;
