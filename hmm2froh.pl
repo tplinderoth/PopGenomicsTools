@@ -73,7 +73,7 @@ if ($exclude_file) {
 	close $exfh;
 }
 
-# process 
+# process states
 
 my $total_unmasked = 0; # total number of unmasked sites
 my $n_autozygous = 0; # number of unmasked autozygous sites
@@ -104,7 +104,7 @@ while (<$hmmfh>) {
 	if ($_ =~ /^ROH/) {
 		chomp;
 		my @tok = split(/\t/, $_);
-		next if exists $exscaff{$tok[0]};
+		next if exists $exscaff{$tok[2]};
 		@interval = @tok[2,3,3,4];
 		$qsum = $tok[5];
 		$nsnps = 1;
@@ -118,7 +118,7 @@ while (<$hmmfh>) {
 	next unless $_ =~ /^ROH/;
 	chomp;
 	my @tok = split(/\t/, $_);
-	next if exists $exscaff{$tok[0]};
+	next if exists $exscaff{$tok[2]};
 	if (eof($hmmfh) || $tok[4] != $interval[3] || $tok[2] ne $interval[0]) {
 		# hit either
 		# (1) the end of the states file
