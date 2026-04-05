@@ -18,17 +18,19 @@ my $states_file = undef;
 my $mask_file = undef;
 my $minq = 20;
 my $minlength = 1;
+my $exclude_file = undef;
 
 die(qq/
 hmm2froh.pl <inputs>
 
 Required input:
---states     FILE    Ouput from BCFtools ROH specifying autozygous or non-autozygous site states
---mask       FILE    TSV file of unmasked sites \(callable sites\) in CHR\\tSTART\\tEND format
+--states      FILE    Ouput from BCFtools ROH specifying autozygous or non-autozygous site states
+--mask        FILE    TSV file of unmasked sites \(callable sites\) in CHR\\tSTART\\tEND format
 
 Optional input:
---minq       FLOAT   Discard autozygous and nonautozygous tracts >= minlength with average quality below FLOAT [$minq]
---minlength  INT     Minimum ROH length [$minlength]
+--minq        FLOAT   Discard autozygous and nonautozygous tracts >= minlength with average quality below FLOAT [$minq]
+--minlength   INT     Minimum ROH length [$minlength]
+--exclude     FILE    File listing scaffolds \(one per row\) to exclude from analyses.
 
 Notes:
 - The input file for --states is the output of BCFtools roh run with output type set to "--output-type sr".
@@ -49,7 +51,7 @@ Ouput:
 [9] FAIL_NONAUTO_SITES: Total number of sites in nonautozygous regions discarded due to low quality.
 \n/) if (!@ARGV || scalar @ARGV < 4);
 
-my $rv = GetOptions('states=s' => \$states_file, 'mask=s' => \$mask_file, 'minq=f' => \$minq, 'minlength=i'=> \$minlength);
+my $rv = GetOptions('states=s' => \$states_file, 'mask=s' => \$mask_file, 'minq=f' => \$minq, 'minlength=i'=> \$minlength, 'exclude=s' => \$exclude_file);
 die("--> input error, exiting prematurely\n") unless ($rv);
 
 die("Error: --states is required\n") if ! $states_file;
@@ -59,6 +61,17 @@ open(my $maskfh, '<', $mask_file) or die("Error: unable to open accessability ma
 
 die("Error: --minq must be >= 0\n") if ($minq < 0);
 die("Error: --minlength must be > 0\n") if ($minlength < 1);
+
+# parse scaffolds to ignore
+my %exscaff;
+if ($exclude_file) {
+	open(my $exfh, '<', $exclude_file) or die("Error: unable to open file of scaffolds to ignore, $exclude_file\n");
+	while (<$exfh>) {
+		chomp;
+		$exscaff{$_} = 1;
+	}
+	close $exfh;
+}
 
 # process 
 
@@ -81,6 +94,7 @@ my @access;
 while (<$maskfh>) {
 	chomp;
 	my @tok = split(/\t/, $_);
+	next if exists $exscaff{$tok[0]};
 	$total_unmasked += $tok[2] - $tok[1] + 1;
 	push @access, [@tok];
 }
@@ -90,6 +104,7 @@ while (<$hmmfh>) {
 	if ($_ =~ /^ROH/) {
 		chomp;
 		my @tok = split(/\t/, $_);
+		next if exists $exscaff{$tok[0]};
 		@interval = @tok[2,3,3,4];
 		$qsum = $tok[5];
 		$nsnps = 1;
@@ -103,6 +118,7 @@ while (<$hmmfh>) {
 	next unless $_ =~ /^ROH/;
 	chomp;
 	my @tok = split(/\t/, $_);
+	next if exists $exscaff{$tok[0]};
 	if (eof($hmmfh) || $tok[4] != $interval[3] || $tok[2] ne $interval[0]) {
 		# hit either
 		# (1) the end of the states file
